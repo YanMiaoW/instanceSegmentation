@@ -78,12 +78,14 @@ def path_decompose(path):
 def parse_args():
     args = {
         "gpu_id": 0,
-        "epoch_model": 5,
+        "epoch_model": 0,
         "continue_train": False,
-        "train_dataset_dir": "/data_ssd/supervislyHumanSegmentation",
+        # "train_dataset_dir": "/data_ssd/supervislyHumanSegmentation",
+        "train_dataset_dir": "/data_ssd/OCHumanSegmentation",
         "val_dataset_dir": "/data_ssd/valSegmentation",
-        "checkpoint_dir": "/checkpoint/segmentation_20200618",
-        "epoch": 200,
+        "checkpoint_dir": "/checkpoint/segmentation_20200621",
+        "pretrained_path": "/checkpoint/segmentation_20200618/199.pth",
+        "epoch": 100,
         "show_iter": 20,
         "val_iter": 120,
         "batch_size": 16,
@@ -144,6 +146,13 @@ if __name__ == "__main__":
             start_epoch = checkpoint["epoch"]
             model.load_state_dict(checkpoint["state_dict"])
             optimizer.load_state_dict(checkpoint["optimizer"])
+    elif hasattr(args,"pretrained_path") and os.path.exists(args.pretrained_path):
+        checkpoint_path = args.pretrained_path
+        print(f"pretrained loading checkpoint from {checkpoint_path}")
+        checkpoint = torch.load(checkpoint_path)
+        start_epoch = checkpoint["epoch"]
+        model.load_state_dict(checkpoint["state_dict"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
 
     criterion = nn.BCELoss()
 
@@ -259,10 +268,10 @@ if __name__ == "__main__":
 
                 model.train()
 
-            if show_img_tag:
-                plt.imshow(show_img)
-                plt.show()
-                plt.pause(0.01)
+                if show_img_tag:
+                    plt.imshow(show_img)
+                    plt.show()
+                    plt.pause(0.01)
 
         print(f"save checkpoint {epoch}.pth")
         # torch.save(
