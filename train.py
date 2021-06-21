@@ -15,7 +15,6 @@ import torch.optim as optim
 from PIL import Image
 from model.segment import Segment
 import random
-from matplotlib import pyplot as plt
 
 
 class SegmentDataset(Dataset):
@@ -84,7 +83,7 @@ def parse_args():
         "train_dataset_dir": "/data_ssd/OCHumanSegmentation",
         "val_dataset_dir": "/data_ssd/valSegmentation",
         "checkpoint_dir": "/checkpoint/segmentation_20200621",
-        "pretrained_path": "/checkpoint/segmentation_20200618/199.pth",
+        # "pretrained_path": "/checkpoint/segmentation_20200618/199.pth",
         "epoch": 100,
         "show_iter": 20,
         "val_iter": 120,
@@ -165,12 +164,8 @@ if __name__ == "__main__":
                 state[k] = v.to(device)
 
     if show_img_tag:
-        fig = plt.figure(figsize=(4.8 * 3, 4.8), dpi=120)
-        fig.canvas.manager.set_window_title("img | mix | mask")
-        # 保持窗口
-        plt.axis("off")
-        plt.ion()
-        show_img = np.ones((480, 480 * 3, 3), dtype=np.uint8) * 255
+        window_name = "img | mix | mask"
+        show_img = None
 
     iou_max = 0
     print("training...")
@@ -228,7 +223,6 @@ if __name__ == "__main__":
                     # mask = mask.permute(1,2,0).numpy()
                     # mask = np.repeat(output,3,axis =2)
                     img = cv.imread(img_path)
-                    img = cv.cvtColor(img, cv.COLOR_BGR2RGB)
                     img = cv.resize(img, (480, 480))
                     output = (
                         (output * 255)
@@ -242,7 +236,7 @@ if __name__ == "__main__":
                     mix = img.copy()
                     select = (output > 127).max(2)
                     mix[select] = (
-                        np.array([255, 255, 0], dtype=np.uint8) // 2 + mix[select] // 2
+                        np.array([0, 255, 255], dtype=np.uint8) // 2 + mix[select] // 2
                     )
                     show_img = np.concatenate([img, mix, output], axis=1)
 
@@ -268,10 +262,11 @@ if __name__ == "__main__":
 
                 model.train()
 
-                if show_img_tag:
-                    plt.imshow(show_img)
-                    plt.show()
-                    plt.pause(0.01)
+            if show_img_tag and show_img is not None:
+                cv.imshow(window_name, show_img)
+                cv.waitKey(5)
+                    
+        cv.destroyWindow(window_name)
 
         print(f"save checkpoint {epoch}.pth")
         # torch.save(
