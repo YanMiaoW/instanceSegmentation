@@ -266,7 +266,6 @@ if __name__ == "__main__":
                 cv.imshow(window_name, show_img)
                 cv.waitKey(5)
                     
-        cv.destroyWindow(window_name)
 
         print(f"save checkpoint {epoch}.pth")
         # torch.save(
@@ -282,3 +281,6 @@ if __name__ == "__main__":
             state,
             os.path.join(args.checkpoint_dir, f"{epoch}.pth"),
         )
+        
+    cv.destroyWindow(window_name)
+    
