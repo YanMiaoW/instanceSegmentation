@@ -130,9 +130,9 @@ class CSPDarknet53(Module):
 
 
 def spp(x):
-    pool5x5 = torch.max_pool2d(x, 5, stride=1, padding=2)
-    pool9x9 = torch.max_pool2d(x, 9, stride=1, padding=4)
-    pool13x13 = torch.max_pool2d(x, 13, stride=1, padding=6)
+    pool5x5 = F.max_pool2d(x, 5, stride=1, padding=2)
+    pool9x9 = F.max_pool2d(x, 9, stride=1, padding=4)
+    pool13x13 = F.max_pool2d(x, 13, stride=1, padding=6)
     return torch.cat((x, pool5x5, pool9x9, pool13x13), dim=1)
 
 
@@ -256,7 +256,9 @@ if __name__ == "__main__":
     # m = CSPDarknet53()
     
     m = Yolov4()
-    i = torch.zeros((1, 3, 608, 608))
-    modshow(m,i)
+    # i = torch.zeros((1, 3, 608, 608))
+    # o = F.max_pool2d(i, 5, stride=1, padding=2)
+    modshow(m,(1,3,608,608))
+    
     # a, b, c = m(i)
     # print(a.shape, b.shape, c.shape)
