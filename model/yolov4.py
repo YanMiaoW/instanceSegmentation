@@ -264,10 +264,5 @@ if __name__ == "__main__":
     # m = CSPDarknet53()
 
     m = Yolov4()
-    # i = torch.zeros((1, 3, 608, 608))
-    # o = F.max_pool2d(i, 5, stride=1, padding=2)
     from debug_function import *
-    modshow(m, (1, 3, 608, 608))
-
-    # a, b, c = m(i)
-    # print(a.shape, b.shape, c.shape)
+    modshow(m, (3, 608, 608))
