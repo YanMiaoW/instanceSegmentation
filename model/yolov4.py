@@ -90,7 +90,7 @@ class CSP(Module):
         self.down = CBMDown(i, o)
 
         self.dense = [CBM1x1(o, o)]
-        self.dense += [ResBlock(o)] * n
+        self.dense += [ResBlock(o) for i in range(n)]
         self.dense += [CBM1x1(o, o)]
 
         self.fast = [CBM1x1(o, o)]
