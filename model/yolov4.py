@@ -1,3 +1,4 @@
+from typing import OrderedDict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -34,13 +35,23 @@ class Module(nn.Module):
             elif isfunction(i):
                 # 函数 包装成 nn.module对象
                 _funci = i  # 用i会和全局的i冲突
-                M = type(i.__name__,(nn.Module,),{"forward": lambda self, x: _funci(x)})
+                M = type(i.__name__, (nn.Module,), {
+                         "forward": lambda self, x: _funci(x)})
                 s.append(M())
 
             else:
                 assert False, "not support " + str(type(i))
 
-        return nn.Sequential(*s)
+        d = {}
+        e = {}
+        for i,n in enumerate(s):
+            class_name = (n.__class__.__name__).lower()
+            if not class_name in e:
+                e[class_name]=0
+            d[f'{class_name}{e[class_name]}']=n
+            e[class_name]+=1
+            
+        return nn.Sequential(OrderedDict(d))
 
 
 def mish(x):
@@ -254,11 +265,11 @@ class Yolov4(Module):
 
 if __name__ == "__main__":
     # m = CSPDarknet53()
-    
+
     m = Yolov4()
     # i = torch.zeros((1, 3, 608, 608))
     # o = F.max_pool2d(i, 5, stride=1, padding=2)
-    modshow(m,(1,3,608,608))
-    
+    modshow(m, (1, 3, 608, 608))
+
     # a, b, c = m(i)
     # print(a.shape, b.shape, c.shape)
