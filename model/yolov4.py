@@ -4,9 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from inspect import isfunction
 
-from debug_function import *
-
-
 class Module(nn.Module):
     def __init__(self, *l, **d):
         super().__init__()
@@ -269,6 +266,7 @@ if __name__ == "__main__":
     m = Yolov4()
     # i = torch.zeros((1, 3, 608, 608))
     # o = F.max_pool2d(i, 5, stride=1, padding=2)
+    from debug_function import *
     modshow(m, (1, 3, 608, 608))
 
     # a, b, c = m(i)
