@@ -14,11 +14,13 @@ import torch.optim as optim
 
 from dataset.common_dataset_api import *
 from imgaug import augmenters as iaa
+import imgaug as ia
 from model.segment import Segment
 from PIL import Image
 
 
 class SegmentCommonDataset(Dataset):
+    name = "cropAndPad"
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
 
@@ -26,8 +28,10 @@ class SegmentCommonDataset(Dataset):
             self.aug = iaa.Noop()
         else:
             self.aug = iaa.Sequential([
-                iaa.Sometimes(0.5, iaa.Affine(
-                    translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}
+                iaa.Sometimes(0.5,iaa.CropAndPad(
+                    percent=(-0.05, 0.1),
+                    pad_mode=ia.ALL,
+                    pad_cval=(0, 255)
                 )),
             ])
 
@@ -191,7 +195,7 @@ if __name__ == "__main__":
                 state[k] = v.to(device)
 
     if show_img_tag:
-        window_name = "img | mix | mask"
+        window_name = f"{SegmentCommonDataset.name} img | mix | mask"
         show_img = None
 
     iou_max = 0
@@ -242,6 +246,7 @@ if __name__ == "__main__":
                     iou = total_iou / len(valloader)
 
                     print(
+                        f"{SegmentCommonDataset.name}",
                         f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
                         f" [train_iou: {round(train_iou,6)}]"
@@ -307,6 +312,7 @@ if __name__ == "__main__":
                 model.train()
 
             if show_img_tag and show_img is not None:
+                show_img = cv.resize(show_img,None,fx=0.5,fy=0.5)
                 cv.imshow(window_name, show_img)
                 cv.waitKey(5)
 
