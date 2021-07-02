@@ -290,8 +290,11 @@ if __name__ == "__main__":
 
                     val_show_img = np.concatenate([img, mix, output], axis=1)
 
-                    show_img = np.concatenate(
+                    show_img2 = np.concatenate(
                         [train_show_img, val_show_img], axis=0)
+                    
+                    show_img = cv.resize(show_img2,(0,0),fx=0.5,fy=0.5)
+                    
 
                     if iou > iou_max and iou > 0.7:
                         iou_max = iou
@@ -312,7 +315,6 @@ if __name__ == "__main__":
                 model.train()
 
             if show_img_tag and show_img is not None:
-                show_img = cv.resize(show_img,(0,0),fx=0.5,fy=0.5)
                 cv.imshow(window_name, show_img)
                 cv.waitKey(5)
 
