@@ -266,3 +266,4 @@ if __name__ == "__main__":
     m = Yolov4()
     from debug_function import *
     modshow(m, (3, 608, 608))
+    print()
