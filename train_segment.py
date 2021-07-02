@@ -19,9 +19,17 @@ from PIL import Image
 
 
 class SegmentCommonDataset(Dataset):
-    def __init__(self, dataset_dir) -> None:
+    def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
-        self.aug = iaa.Noop()
+
+        if test:
+            self.aug = iaa.Noop()
+        else:
+            self.aug = iaa.Sequential([
+                iaa.Sometimes(0.5, iaa.Affine(
+                    rotate=(-30, 30)
+                )),
+            ])
 
         self.transform = transforms.Compose(
             [
@@ -63,8 +71,6 @@ class SegmentCommonDataset(Dataset):
     def __getitem__(self, index):
         result = self.results[index].copy()
 
-        img_path = result[key_combine('image', 'image_path')]
-
         common_transfer(result)
         common_aug(result, self.aug)
 
@@ -77,7 +83,7 @@ class SegmentCommonDataset(Dataset):
         image_tensor = self.transform(image_pil)
         mask_tensor = self.label_transform(mask_pil)
 
-        return image_tensor, mask_tensor, img_path
+        return image_tensor, mask_tensor
 
     def __len__(self):
         return len(self.results)
@@ -144,7 +150,7 @@ if __name__ == "__main__":
         trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num
     )
 
-    valset = SegmentCommonDataset(args.val_dataset_dir)
+    valset = SegmentCommonDataset(args.val_dataset_dir, test=True)
 
     valloader = DataLoader(
         valset, batch_size=args.batch_size, shuffle=True, num_workers=1
@@ -196,7 +202,7 @@ if __name__ == "__main__":
             continue
 
         loss_total = 0.0
-        for i0, (inputs, labels, img_paths) in enumerate(trainloader):
+        for i0, (inputs, labels) in enumerate(trainloader):
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
 
@@ -217,15 +223,15 @@ if __name__ == "__main__":
 
             if i0 % args.val_iter == 0:
                 model.eval()
-                
+
                 train_output = outputs[:1]
-                train_img_path = img_paths[0]
+                train_img_tensor = inputs[:1]
 
                 train_iou = mask_iou(outputs, labels)
                 with torch.no_grad():
                     total_iou = 0
 
-                    for j0, (inputs2, labels2, img_paths2) in enumerate(valloader):
+                    for j0, (inputs2, labels2) in enumerate(valloader):
                         inputs2, labels2 = inputs2.to(
                             device), labels2.to(device)
                         outputs, _ = model(inputs2)
@@ -235,9 +241,6 @@ if __name__ == "__main__":
                         total_iou += iou
                     iou = total_iou / len(valloader)
 
-                    train_img = cv.imread(train_img_path)
-                    train_img = cv.resize(train_img, (480, 480))
-
                     print(
                         f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
@@ -245,7 +248,7 @@ if __name__ == "__main__":
                         f" [val_iou: {round(iou,6)}]"
                     )
 
-                    def get_mix(output, img):
+                    def get_mix(output, img_tensor: torch.Tensor):
                         output = (
                             (output * 255)
                             .cpu()
@@ -254,23 +257,28 @@ if __name__ == "__main__":
                             .astype(np.uint8)
                         )
                         output = np.repeat(output, 3, axis=2)
+
+                        img = ((img_tensor + 1)*0.5*255).cpu()\
+                            .permute(0,2, 3, 1) .numpy()[0].astype(np.uint8)
+                        img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
+
                         mix = img.copy()
                         select = (output > 127).max(2)
                         mix[select] = (
                             np.array([0, 255, 255], dtype=np.uint8) // 2 +
                             mix[select] // 2
                         )
-                        return mix, output
+                        return mix, output, img
 
-                    img_tensor, mask, img_path = random.choice(valset)
+                    img_tensor, mask = random.choice(valset)
                     output, _ = model(img_tensor[np.newaxis, :].to(device))
                     output = torch.sigmoid(output)
-                    img = cv.imread(img_path)
-                    img = cv.resize(img, (480, 480))
 
-                    mix, output = get_mix(output, img)
+                    mix, output, img = get_mix(
+                        output, img_tensor[np.newaxis, :])
 
-                    train_mix, train_output = get_mix(train_output, train_img)
+                    train_mix, train_output, train_img = get_mix(
+                        train_output, train_img_tensor)
 
                     train_show_img = np.concatenate(
                         [train_img, train_mix, train_output], axis=1)
