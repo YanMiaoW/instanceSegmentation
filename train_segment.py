@@ -312,7 +312,7 @@ if __name__ == "__main__":
                 model.train()
 
             if show_img_tag and show_img is not None:
-                show_img = cv.resize(show_img,None,fx=0.5,fy=0.5)
+                show_img = cv.resize(show_img,(0,0),fx=0.5,fy=0.5)
                 cv.imshow(window_name, show_img)
                 cv.waitKey(5)
 
