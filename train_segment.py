@@ -27,7 +27,7 @@ class SegmentCommonDataset(Dataset):
         else:
             self.aug = iaa.Sequential([
                 iaa.Sometimes(0.5, iaa.Affine(
-                    rotate=(-30, 30)
+                    translate_percent={"x": (-0.2, 0.2), "y": (-0.2, 0.2)}
                 )),
             ])
 
@@ -112,7 +112,7 @@ def path_decompose(path):
 
 def parse_args():
     args = {
-        "gpu_id": 0,
+        "gpu_id": 2,
         "epoch_model": 0,
         "continue_train": False,
         "train_dataset_dir": "/data_ssd/supervisely",
