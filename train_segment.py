@@ -47,7 +47,7 @@ class SegmentCommonDataset(Dataset):
 
                 if 'meta' in result:
                     meta = result['meta']
-                    yield meta['width'] * meta['height'] < 800*800
+                    yield meta['width'] * meta['height'] < 1200*1200
 
                 if 'class' in result:
                     yield result['class'] in ['person']
@@ -196,7 +196,7 @@ if __name__ == "__main__":
             continue
 
         loss_total = 0.0
-        for i0, (inputs, labels, _) in enumerate(trainloader):
+        for i0, (inputs, labels, img_paths) in enumerate(trainloader):
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
 
@@ -217,6 +217,9 @@ if __name__ == "__main__":
 
             if i0 % args.val_iter == 0:
                 model.eval()
+                
+                train_output = outputs[:1]
+                train_img_path = img_paths[0]
 
                 train_iou = mask_iou(outputs, labels)
                 with torch.no_grad():
@@ -227,9 +230,6 @@ if __name__ == "__main__":
                             device), labels2.to(device)
                         outputs, _ = model(inputs2)
                         outputs = torch.sigmoid(outputs)
-
-                        train_output = outputs[:1]
-                        train_img_path = img_paths2[0]
 
                         iou = mask_iou(outputs, labels2)
                         total_iou += iou
