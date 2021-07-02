@@ -20,7 +20,8 @@ from PIL import Image
 
 
 class SegmentCommonDataset(Dataset):
-    name = "cropAndPad"
+    name = "superpixel"
+
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
 
@@ -28,11 +29,12 @@ class SegmentCommonDataset(Dataset):
             self.aug = iaa.Noop()
         else:
             self.aug = iaa.Sequential([
-                iaa.Sometimes(0.5,iaa.CropAndPad(
-                    percent=(-0.4, 0.4),
-                    pad_mode=ia.ALL,
-                    pad_cval=(0, 255)
-                )),
+                iaa.Sometimes(0.5,
+                    iaa.Superpixels(
+                        p_replace=(0, 1.0),
+                        n_segments=(20, 200)
+                    )
+                ),
             ])
 
         self.transform = transforms.Compose(
@@ -116,7 +118,7 @@ def path_decompose(path):
 
 def parse_args():
     args = {
-        "gpu_id": 2,
+        "gpu_id": 3,
         "epoch_model": 0,
         "continue_train": False,
         "train_dataset_dir": "/data_ssd/supervisely",
