@@ -29,7 +29,7 @@ class SegmentCommonDataset(Dataset):
         else:
             self.aug = iaa.Sequential([
                 iaa.Sometimes(0.5,iaa.CropAndPad(
-                    percent=(-0.05, 0.1),
+                    percent=(-0.4, 0.4),
                     pad_mode=ia.ALL,
                     pad_cval=(0, 255)
                 )),
