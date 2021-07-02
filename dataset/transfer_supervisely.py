@@ -149,7 +149,7 @@ def transfer_supervisely_to_common(data_dir, save_dir):
 if __name__ == "__main__":
     from debug_function import *
     transfer_supervisely_to_common(
-        '/Users/yanmiao/yanmiao/data/supervisely-person-datasets',
-        '/Users/yanmiao/yanmiao/data-common/supervisely'
-        # '/Users/yanmiao/yanmiao/data-common/val'
+        '/data/SuperviselyPeopleDatasets',
+        '/data_ssd/supervisely'
+        # '/data_ssd/val'
     )

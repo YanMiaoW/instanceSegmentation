@@ -109,9 +109,9 @@ def parse_args():
         "gpu_id": 0,
         "epoch_model": 0,
         "continue_train": False,
-        "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/supervisely",
-        "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/val",
-        "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+        "train_dataset_dir": "/data_ssd/supervisely",
+        "val_dataset_dir": "/data_ssd/val",
+        "checkpoint_dir": "/checkpoint/segment",
         # "pretrained_path": "/checkpoint/segmentation_20200618/199.pth",
         "epoch": 30,
         "show_iter": 20,
@@ -152,7 +152,8 @@ if __name__ == "__main__":
 
     model = Segment(1)
 
-    optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    optimizer = optim.Adam(model.parameters())
 
     criterion = nn.BCELoss()
 
