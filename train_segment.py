@@ -20,7 +20,7 @@ from PIL import Image
 
 
 class SegmentCommonDataset(Dataset):
-    name = "superpixel"
+    name = "piecewiseAffine"
 
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
@@ -30,10 +30,7 @@ class SegmentCommonDataset(Dataset):
         else:
             self.aug = iaa.Sequential([
                 iaa.Sometimes(0.5,
-                    iaa.Superpixels(
-                        p_replace=(0, 1.0),
-                        n_segments=(20, 200)
-                    )
+                    iaa.PiecewiseAffine(scale=(0.01, 0.05))
                 ),
             ])
 
