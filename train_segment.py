@@ -4,23 +4,26 @@ import torch.nn.functional as F
 from debug_function import *
 import numpy as np
 import os
-import glob
-import tqdm
-import json
 import cv2 as cv
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch.optim as optim
+from shutil import copyfile
 
 from dataset.common_dataset_api import *
 from imgaug import augmenters as iaa
 import imgaug as ia
 from model.segment import Segment
 from PIL import Image
+from pygit2 import Repository
+
+repo = Repository('.')
+head = repo.lookup_reference('HEAD').resolve()
+head = repo.head
+branch_name = head.name.split('/')[-1]
 
 
 class SegmentCommonDataset(Dataset):
-    name = "elasticTransformation"
 
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
@@ -28,11 +31,7 @@ class SegmentCommonDataset(Dataset):
         if test:
             self.aug = iaa.Noop()
         else:
-            self.aug = iaa.Sequential([
-                iaa.Sometimes(0.5,
-                    iaa.ElasticTransformation(alpha=(0.5, 3.5), sigma=0.25)
-                ),
-            ])
+            self.aug = iaa.Noop()
 
         self.transform = transforms.Compose(
             [
@@ -184,6 +183,29 @@ if __name__ == "__main__":
         model.load_state_dict(checkpoint["state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer"])
 
+    iou_max = 0
+
+    iou_max_best = 0
+
+    branch_best_path = os.path.join(
+        args.checkpoint_dir, f'{branch_name}_best.pth')
+
+    best_path = os.path.join(args.checkpoint_dir, f'best.pth')
+
+    if os.path.exists(branch_best_path):
+
+        branch_best_checkpoint = torch.load(os.path.join(
+            args.checkpoint_dir, branch_best_path))
+
+        iou_max = branch_best_checkpoint['best']
+
+    if os.path.exists(best_path):
+
+        best_checkpoint = torch.load(os.path.join(
+            args.checkpoint_dir, best_path))
+
+        iou_max_best = best_checkpoint['best']
+
     device = torch.device(
         f"cuda:{args.gpu_id}" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
@@ -194,10 +216,9 @@ if __name__ == "__main__":
                 state[k] = v.to(device)
 
     if show_img_tag:
-        window_name = f"{SegmentCommonDataset.name} img | mix | mask"
+        window_name = f"{branch_name} img | mix | mask"
         show_img = None
 
-    iou_max = 0
     print("training...")
     for epoch in range(args.epoch):
 
@@ -245,7 +266,7 @@ if __name__ == "__main__":
                     iou = total_iou / len(valloader)
 
                     print(
-                        f"{SegmentCommonDataset.name}",
+                        f"{branch_name}",
                         f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
                         f" [train_iou: {round(train_iou,6)}]"
@@ -263,7 +284,7 @@ if __name__ == "__main__":
                         output = np.repeat(output, 3, axis=2)
 
                         img = ((img_tensor + 1)*0.5*255).cpu()\
-                            .permute(0,2, 3, 1) .numpy()[0].astype(np.uint8)
+                            .permute(0, 2, 3, 1) .numpy()[0].astype(np.uint8)
                         img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
 
                         mix = img.copy()
@@ -291,25 +312,35 @@ if __name__ == "__main__":
 
                     show_img2 = np.concatenate(
                         [train_show_img, val_show_img], axis=0)
-                    
-                    show_img = cv.resize(show_img2,(0,0),fx=0.5,fy=0.5)
-                    
+
+                    show_img = cv.resize(show_img2, (0, 0), fx=0.5, fy=0.5)
 
                     if iou > iou_max and iou > 0.7:
                         iou_max = iou
-                        print("save best checkpoint " +
-                              f"best_epoch_{epoch}_iou_{int(iou*100)}.pth")
+
+                        print("save branch best checkpoint " + branch_best_path)
 
                         state = {
+                            "branch_name": branch_name,
+                            "best": iou_max,
                             "epoch": epoch + 1,
                             "state_dict": model.state_dict(),
                             "optimizer": optimizer.state_dict(),
                         }
-                        torch.save(
-                            state,
-                            os.path.join(
-                                args.checkpoint_dir, f"best_epoch_{epoch}_iou_{int(iou*100)}.pth"),
-                        )
+                        torch.save(state, branch_best_path)
+
+                    if iou_max > iou_max_best:
+                        iou_max_best = iou_max
+                        print("save best checkpoint " + best_path)
+
+                        state = {
+                            "branch_name": branch_name,
+                            "best": iou_max,
+                            "epoch": epoch + 1,
+                            "state_dict": model.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                        }
+                        torch.save(state, branch_best_path)
 
                 model.train()
 
@@ -317,15 +348,15 @@ if __name__ == "__main__":
                 cv.imshow(window_name, show_img)
                 cv.waitKey(5)
 
-        print(f"save checkpoint {epoch}.pth")
-        state = {
-            "epoch": epoch + 1,
-            "state_dict": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-        }
-        torch.save(
-            state,
-            os.path.join(args.checkpoint_dir, f"{epoch}.pth"),
-        )
+        # print(f"save checkpoint {epoch}.pth")
+        # state = {
+        #     "epoch": epoch + 1,
+        #     "state_dict": model.state_dict(),
+        #     "optimizer": optimizer.state_dict(),
+        # }
+        # torch.save(
+        #     state,
+        #     os.path.join(args.checkpoint_dir, f"{epoch}.pth"),
+        # )
 
     cv.destroyWindow(window_name)
