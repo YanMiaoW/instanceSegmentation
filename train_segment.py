@@ -20,7 +20,7 @@ from PIL import Image
 
 
 class SegmentCommonDataset(Dataset):
-    name = "piecewiseAffine"
+    name = "elasticTransformation"
 
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
@@ -30,7 +30,7 @@ class SegmentCommonDataset(Dataset):
         else:
             self.aug = iaa.Sequential([
                 iaa.Sometimes(0.5,
-                    iaa.PiecewiseAffine(scale=(0.01, 0.05))
+                    iaa.ElasticTransformation(alpha=(0.5, 3.5), sigma=0.25)
                 ),
             ])
 
@@ -115,7 +115,7 @@ def path_decompose(path):
 
 def parse_args():
     args = {
-        "gpu_id": 3,
+        "gpu_id": 2,
         "epoch_model": 0,
         "continue_train": False,
         "train_dataset_dir": "/data_ssd/supervisely",
