@@ -7,11 +7,11 @@ import glob
 import tqdm
 import json
 import cv2 as cv
-import argparse
 from debug_function import *
 
 
 def parse_args():
+    import argparse
     parser = argparse.ArgumentParser(description="generate train people segmentaion")
     parser.add_argument(
         "-o", "--output-dir", help="train dataset save dir", required=True
@@ -94,6 +94,7 @@ def supervisly():
             item_paths = dataset.get_item_paths(item_name)
 
             ann = sly.Annotation.load_json_file(item_paths.ann_path, project.meta)
+            ann.get_label_by_id()
 
             for label in ann.labels:
                 if label.obj_class.name in classes_filter:

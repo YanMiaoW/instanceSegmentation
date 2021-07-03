@@ -144,8 +144,6 @@ def parse_args():
         "gpu_id": 0,
         "epoch_model": 0,
         "continue_train": False,
-        # "train_dataset_dir": "/data_ssd/supervislyHumanSegmentation",
-        # "train_dataset_dir": "/data_ssd/CocoDetection",
         "train_dataset_dir": "/data_ssd/supervislyDetection",
         "val_dataset_dir": "/data_ssd/valDetection",
         "checkpoint_dir": "/checkpoint/detection_20200622",
