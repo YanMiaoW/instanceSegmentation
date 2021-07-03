@@ -4,24 +4,34 @@ import torch.nn.functional as F
 from debug_function import *
 import numpy as np
 import os
-import glob
-import tqdm
-import json
 import cv2 as cv
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch.optim as optim
+from shutil import copyfile
 
 from dataset.common_dataset_api import *
 from imgaug import augmenters as iaa
+import imgaug as ia
 from model.segment import Segment
 from PIL import Image
+from pygit2 import Repository
+
+repo = Repository('.')
+head = repo.lookup_reference('HEAD').resolve()
+head = repo.head
+branch_name = head.name.split('/')[-1]
 
 
 class SegmentCommonDataset(Dataset):
-    def __init__(self, dataset_dir) -> None:
+
+    def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
-        self.aug = iaa.Noop()
+
+        if test:
+            self.aug = iaa.Noop()
+        else:
+            self.aug = iaa.Noop()
 
         self.transform = transforms.Compose(
             [
@@ -47,7 +57,7 @@ class SegmentCommonDataset(Dataset):
 
                 if 'meta' in result:
                     meta = result['meta']
-                    yield meta['width'] * meta['height'] < 800*800
+                    yield meta['width'] * meta['height'] < 1200*1200
 
                 if 'class' in result:
                     yield result['class'] in ['person']
@@ -63,8 +73,6 @@ class SegmentCommonDataset(Dataset):
     def __getitem__(self, index):
         result = self.results[index].copy()
 
-        img_path = result[key_combine('image', 'image_path')]
-
         common_transfer(result)
         common_aug(result, self.aug)
 
@@ -77,7 +85,7 @@ class SegmentCommonDataset(Dataset):
         image_tensor = self.transform(image_pil)
         mask_tensor = self.label_transform(mask_pil)
 
-        return image_tensor, mask_tensor, img_path
+        return image_tensor, mask_tensor
 
     def __len__(self):
         return len(self.results)
@@ -106,12 +114,12 @@ def path_decompose(path):
 
 def parse_args():
     args = {
-        "gpu_id": 0,
+        "gpu_id": 2,
         "epoch_model": 0,
         "continue_train": False,
-        "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/supervisely",
-        "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/val",
-        "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+        "train_dataset_dir": "/data_ssd/supervisely",
+        "val_dataset_dir": "/data_ssd/val",
+        "checkpoint_dir": "/checkpoint/segment",
         # "pretrained_path": "/checkpoint/segmentation_20200618/199.pth",
         "epoch": 30,
         "show_iter": 20,
@@ -144,7 +152,7 @@ if __name__ == "__main__":
         trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num
     )
 
-    valset = SegmentCommonDataset(args.val_dataset_dir)
+    valset = SegmentCommonDataset(args.val_dataset_dir, test=True)
 
     valloader = DataLoader(
         valset, batch_size=args.batch_size, shuffle=True, num_workers=1
@@ -152,7 +160,8 @@ if __name__ == "__main__":
 
     model = Segment(1)
 
-    optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
+    optimizer = optim.Adam(model.parameters())
 
     criterion = nn.BCELoss()
 
@@ -174,6 +183,29 @@ if __name__ == "__main__":
         model.load_state_dict(checkpoint["state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer"])
 
+    iou_max = 0
+
+    iou_max_best = 0
+
+    branch_best_path = os.path.join(
+        args.checkpoint_dir, f'{branch_name}_best.pth')
+
+    best_path = os.path.join(args.checkpoint_dir, f'best.pth')
+
+    if os.path.exists(branch_best_path):
+
+        branch_best_checkpoint = torch.load(os.path.join(
+            args.checkpoint_dir, branch_best_path))
+
+        iou_max = branch_best_checkpoint['best']
+
+    if os.path.exists(best_path):
+
+        best_checkpoint = torch.load(os.path.join(
+            args.checkpoint_dir, best_path))
+
+        iou_max_best = best_checkpoint['best']
+
     device = torch.device(
         f"cuda:{args.gpu_id}" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
@@ -184,10 +216,9 @@ if __name__ == "__main__":
                 state[k] = v.to(device)
 
     if show_img_tag:
-        window_name = "img | mix | mask"
+        window_name = f"{branch_name} img | mix | mask"
         show_img = None
 
-    iou_max = 0
     print("training...")
     for epoch in range(args.epoch):
 
@@ -195,7 +226,7 @@ if __name__ == "__main__":
             continue
 
         loss_total = 0.0
-        for i0, (inputs, labels, _) in enumerate(trainloader):
+        for i0, (inputs, labels) in enumerate(trainloader):
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
 
@@ -217,34 +248,32 @@ if __name__ == "__main__":
             if i0 % args.val_iter == 0:
                 model.eval()
 
+                train_output = outputs[:1]
+                train_img_tensor = inputs[:1]
+
                 train_iou = mask_iou(outputs, labels)
                 with torch.no_grad():
                     total_iou = 0
 
-                    for j0, (inputs2, labels2, img_paths2) in enumerate(valloader):
+                    for j0, (inputs2, labels2) in enumerate(valloader):
                         inputs2, labels2 = inputs2.to(
                             device), labels2.to(device)
                         outputs, _ = model(inputs2)
                         outputs = torch.sigmoid(outputs)
 
-                        train_output = outputs[:1]
-                        train_img_path = img_paths2[0]
-
                         iou = mask_iou(outputs, labels2)
                         total_iou += iou
                     iou = total_iou / len(valloader)
 
-                    train_img = cv.imread(train_img_path)
-                    train_img = cv.resize(train_img, (480, 480))
-
                     print(
+                        f"{branch_name}",
                         f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
                         f" [train_iou: {round(train_iou,6)}]"
                         f" [val_iou: {round(iou,6)}]"
                     )
 
-                    def get_mix(output, img):
+                    def get_mix(output, img_tensor: torch.Tensor):
                         output = (
                             (output * 255)
                             .cpu()
@@ -253,47 +282,65 @@ if __name__ == "__main__":
                             .astype(np.uint8)
                         )
                         output = np.repeat(output, 3, axis=2)
+
+                        img = ((img_tensor + 1)*0.5*255).cpu()\
+                            .permute(0, 2, 3, 1) .numpy()[0].astype(np.uint8)
+                        img = cv.cvtColor(img, cv.COLOR_RGB2BGR)
+
                         mix = img.copy()
                         select = (output > 127).max(2)
                         mix[select] = (
                             np.array([0, 255, 255], dtype=np.uint8) // 2 +
                             mix[select] // 2
                         )
-                        return mix, output
+                        return mix, output, img
 
-                    img_tensor, mask, img_path = random.choice(valset)
+                    img_tensor, mask = random.choice(valset)
                     output, _ = model(img_tensor[np.newaxis, :].to(device))
                     output = torch.sigmoid(output)
-                    img = cv.imread(img_path)
-                    img = cv.resize(img, (480, 480))
 
-                    mix, output = get_mix(output, img)
+                    mix, output, img = get_mix(
+                        output, img_tensor[np.newaxis, :])
 
-                    train_mix, train_output = get_mix(train_output, train_img)
+                    train_mix, train_output, train_img = get_mix(
+                        train_output, train_img_tensor)
 
                     train_show_img = np.concatenate(
                         [train_img, train_mix, train_output], axis=1)
 
                     val_show_img = np.concatenate([img, mix, output], axis=1)
 
-                    show_img = np.concatenate(
+                    show_img2 = np.concatenate(
                         [train_show_img, val_show_img], axis=0)
+
+                    show_img = cv.resize(show_img2, (0, 0), fx=0.5, fy=0.5)
 
                     if iou > iou_max and iou > 0.7:
                         iou_max = iou
-                        print("save best checkpoint " +
-                              f"best_epoch_{epoch}_iou_{int(iou*100)}.pth")
+
+                        print("save branch best checkpoint " + branch_best_path)
 
                         state = {
+                            "branch_name": branch_name,
+                            "best": iou_max,
                             "epoch": epoch + 1,
                             "state_dict": model.state_dict(),
                             "optimizer": optimizer.state_dict(),
                         }
-                        torch.save(
-                            state,
-                            os.path.join(
-                                args.checkpoint_dir, f"best_epoch_{epoch}_iou_{int(iou*100)}.pth"),
-                        )
+                        torch.save(state, branch_best_path)
+
+                    if iou_max > iou_max_best:
+                        iou_max_best = iou_max
+                        print("save best checkpoint " + best_path)
+
+                        state = {
+                            "branch_name": branch_name,
+                            "best": iou_max,
+                            "epoch": epoch + 1,
+                            "state_dict": model.state_dict(),
+                            "optimizer": optimizer.state_dict(),
+                        }
+                        torch.save(state, branch_best_path)
 
                 model.train()
 
@@ -301,15 +348,15 @@ if __name__ == "__main__":
                 cv.imshow(window_name, show_img)
                 cv.waitKey(5)
 
-        print(f"save checkpoint {epoch}.pth")
-        state = {
-            "epoch": epoch + 1,
-            "state_dict": model.state_dict(),
-            "optimizer": optimizer.state_dict(),
-        }
-        torch.save(
-            state,
-            os.path.join(args.checkpoint_dir, f"{epoch}.pth"),
-        )
+        # print(f"save checkpoint {epoch}.pth")
+        # state = {
+        #     "epoch": epoch + 1,
+        #     "state_dict": model.state_dict(),
+        #     "optimizer": optimizer.state_dict(),
+        # }
+        # torch.save(
+        #     state,
+        #     os.path.join(args.checkpoint_dir, f"{epoch}.pth"),
+        # )
 
     cv.destroyWindow(window_name)

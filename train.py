@@ -77,8 +77,8 @@ def path_decompose(path):
 def parse_args():
     args = {
         "gpu_id": 0,
-        "epoch_model": 0,
-        "continue_train": False,
+        "epoch_model": 70,
+        "continue_train": True,
         # "train_dataset_dir": "/data_ssd/supervislyHumanSegmentation",
         "train_dataset_dir": "/data_ssd/OCHumanSegmentation",
         "val_dataset_dir": "/data_ssd/valSegmentation",
