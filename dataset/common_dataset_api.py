@@ -4,10 +4,9 @@ import cv2 as cv
 import os
 import glob
 import json
-from torch.utils.data import Dataset
 import random
 from imgaug import augmenters as iaa
-from typing import AnyStr, Callable, Generator
+from typing import AnyStr, Generator
 
 # type
 TYPE = {'other', 'sub_dict', 'sub_list', 'class', 'keypoint_status',
@@ -22,7 +21,7 @@ ANN_CHOICES = {'meta', 'object', 'image', 'mix',
 
 OBJ_CHOICES = {'box', 'class', 'instance_mask', 'body_keypoint'}
 
-KEYPOINT_CHOICES = {'part', 'status','point'}
+KEYPOINT_CHOICES = {'name', 'status', 'point'}
 
 CLS_MASKS_CHOICES = {'class', 'segment_mask'}
 
@@ -36,6 +35,8 @@ BODY_PART_NAME = {"head", "neck", "right_shoulder", "right_elbow", "right_wrist"
                   'left_ear', 'nose', 'right_eye', 'left_eye'}
 
 CLASS = {'person', 'background'}
+
+
 
 '''
 other类型不会在 transfer 和 aug 阶段进行任何处理，所以其下面不会有类型信息
@@ -61,6 +62,15 @@ json可以有自定义的条目，不过为了多个数据集可以联合操作�
                 class::class 类别
                 mask_path::instance_mask 实例分割掩码
                 polygon::instance_mask 实例分割掩码polygon（可能）
+                sub_list::body_keypoint 人体关键点
+                    [
+                        {
+                            body_part_name::name 人体部位名称
+                            keypoint_status::status 关键点状态（缺失，可视，不可视）
+                            keypoint_xy::point 关键点坐标xy
+                        },
+                        ...
+                    ]
             },
             ...
         ]
@@ -197,6 +207,12 @@ def common_transfer(result: dict) -> None:
         if type_ == 'class':
             assert value in CLASS
 
+        if type_ == 'keypoint_status':
+            assert value in KEYPOINT_STATUS
+
+        if type_ == 'body_part_name':
+            assert value in BODY_PART_NAME
+
         if type_ == 'polygon':
             assert False, 'not support'
 
@@ -215,7 +231,7 @@ def common_aug(result: dict, imgaug: iaa.Augmenter) -> None:
         if type_ == 'box_xyxy':
             result[key_type] = aug.augment_keypoints(value)[0]
 
-        if type_ == 'keypoint':
+        if type_ == 'keypoint_xy':
             result[key_type] = aug.augment_keypoints(value)[0]
 
 

@@ -26,8 +26,8 @@ def transfer_supervisely_to_common(data_dir, save_dir):
                 item_paths.ann_path, project.meta)
             
             
-            if any(label.obj_class.name not in ['person_poly','person_bmp','neutral'] for label in sann.labels):
-                print()
+            if any(label.obj_class.name not in ['person_poly','person_bmp','neutral','persona'] for label in sann.labels):
+                print( )
 
             ann = {}
 
@@ -72,7 +72,7 @@ def transfer_supervisely_to_common(data_dir, save_dir):
             cv.imwrite(os.path.join(save_dir, image_path), img)
 
             ann[key_combine('image', 'image_path')] = image_path
-            ann[key_combine('class', 'other')] = 'person'
+            ann[key_combine('class', 'class')] = 'person'
 
 
 
@@ -103,7 +103,7 @@ def transfer_supervisely_to_common(data_dir, save_dir):
 
                 obj[key_combine('instance_mask', 'mask_path')] = instance_path
                 obj[key_combine('box', 'box_xyxy')] = [x0, y0, x1, y1]
-                obj[key_combine('class', 'other')] = class_name
+                obj[key_combine('class', 'class')] = class_name
                 object.append(obj)
 
                 mask |= instance
@@ -126,7 +126,7 @@ def transfer_supervisely_to_common(data_dir, save_dir):
             copyfile(os.path.join(save_dir, segment_mask_path),
                      os.path.join(save_dir, class_mask_path))
 
-            cls_mask[key_combine('class', 'other')] = class_name
+            cls_mask[key_combine('class', 'class')] = class_name
             
             cls_mask[key_combine('segment_mask', 'mask_path')
                      ] = class_mask_path
@@ -151,7 +151,9 @@ def transfer_supervisely_to_common(data_dir, save_dir):
 if __name__ == "__main__":
     from debug_function import *
     transfer_supervisely_to_common(
-        '/data/SuperviselyPeopleDatasets',
-        '/data_ssd/supervisely'
+        # '/data/SuperviselyPeopleDatasets',
+        '/Users/yanmiao/yanmiao/data/hun_sha_di_pian/labeled/hun',
+        '/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian'
+        # '/data_ssd/supervisely'
         # '/data_ssd/val'
     )

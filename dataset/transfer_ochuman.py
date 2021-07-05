@@ -3,7 +3,7 @@ import numpy as np
 import tqdm
 from shutil import copyfile
 from ochumanApi.ochuman import OCHuman
-from dataset.common_dataset_api import key_combine, BODY_PART_NAME, KEYPOINT_STATUS
+from dataset.common_dataset_api import key_combine, BODY_PART_NAME
 import ochumanApi.vis as vistool
 from ochumanApi.ochuman import Poly2Mask
 import json
@@ -18,7 +18,9 @@ def path_decompose(path):
     return dirname, basename, ext
 
 
-def get_body_keypoint(img, kpt, connection=None, colors=None, bbox=None):
+def get_body_keypoint(kpt):
+    kpt = np.array(kpt, dtype=np.int32).reshape(-1, 3)
+    kpt = np.array(kpt)
     npart = kpt.shape[0]
 
     if npart == 17:  # coco
@@ -34,8 +36,8 @@ def get_body_keypoint(img, kpt, connection=None, colors=None, bbox=None):
                        1: 'not_vis',
                        0: 'missing'}
         map_visible = {value: key for key, value in visible_map.items()}
-        if connection is None:
-            connection = [[16, 14], [14, 12], [17, 15],
+        # if connection is None:
+        connection = [[16, 14], [14, 12], [17, 15],
                           [15, 13], [12, 13], [6, 12],
                           [7, 13], [6, 7], [6, 8],
                           [7, 9], [8, 10], [9, 11],
@@ -53,8 +55,7 @@ def get_body_keypoint(img, kpt, connection=None, colors=None, bbox=None):
                        2: 'self_occluded',
                        3: 'others_occluded'}
         map_visible = {value: key for key, value in visible_map.items()}
-        if connection is None:
-            connection = [[16, 19], [13, 17], [4, 5],
+        connection = [[16, 19], [13, 17], [4, 5],
                           [19, 17], [17, 14], [5, 6],
                           [17, 18], [14, 4], [1, 2],
                           [18, 15], [14, 1], [2, 3],
@@ -82,7 +83,7 @@ def get_body_keypoint(img, kpt, connection=None, colors=None, bbox=None):
         x, y, v = kpt[idx, :]
 
         one_key = {}
-        one_key[key_combine('part', 'body_part_name')] = key
+        one_key[key_combine('name', 'body_part_name')] = key
         if len(part_names) == 19:
             key_map = {
                 0: 'missing',
@@ -98,9 +99,11 @@ def get_body_keypoint(img, kpt, connection=None, colors=None, bbox=None):
             }
 
         one_key[key_combine('status', 'keypoint_status')] = key_map[v]
-        one_key[key_combine('point', 'keypoint_xy')] = [x, y]
+        one_key[key_combine('point', 'keypoint_xy')] = [int(x), int(y)]
 
         body_keypoint.append(one_key)
+        
+    return body_keypoint
 
 
 def transfer_ochuman(ann_path, img_dir, save_dir):
@@ -216,11 +219,11 @@ def transfer_ochuman(ann_path, img_dir, save_dir):
 
         nd[key_combine('object', 'sub_list')] = objs
 
-        nd_json = json.dumps(nd[key_combine('object', 'sub_list')])
+        nd_json = json.dumps(nd)
         with open(os.path.join(data_dir, name+'.json'), 'w') as f:
             f.write(nd_json)
 
-        print()
+        # print()
 
     print()
 
