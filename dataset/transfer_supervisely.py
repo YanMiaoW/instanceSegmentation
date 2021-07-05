@@ -3,7 +3,7 @@ import cv2 as cv
 import os
 import tqdm
 import numpy as np
-from common_dataset_api import key_combine, CLASS
+from common_dataset_api import key_combine
 from shutil import copyfile
 
 

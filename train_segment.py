@@ -8,7 +8,6 @@ import cv2 as cv
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch.optim as optim
-from shutil import copyfile
 
 from dataset.common_dataset_api import *
 from imgaug import augmenters as iaa

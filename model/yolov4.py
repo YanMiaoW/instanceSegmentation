@@ -4,6 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from inspect import isfunction
 
+
 class Module(nn.Module):
     def __init__(self, *l, **d):
         super().__init__()
@@ -40,14 +41,14 @@ class Module(nn.Module):
                 assert False, "not support " + str(type(i))
 
         d = {}
-        e = {}
-        for i,n in enumerate(s):
+        netCount = {}
+        for i, n in enumerate(s):
             class_name = (n.__class__.__name__).lower()
-            if not class_name in e:
-                e[class_name]=0
-            d[f'{class_name}{e[class_name]}']=n
-            e[class_name]+=1
-            
+            if not class_name in netCount:
+                netCount[class_name] = 0
+            d[f'{class_name}{netCount[class_name]}'] = n
+            netCount[class_name] += 1
+
         return nn.Sequential(OrderedDict(d))
 
 
@@ -261,7 +262,6 @@ class Yolov4(Module):
 
 
 if __name__ == "__main__":
-    # m = CSPDarknet53()
 
     m = Yolov4()
     from debug_function import *
