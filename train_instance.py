@@ -73,8 +73,6 @@ class InstanceCommonDataset(Dataset):
                               'instance_mask', 'instance_image', 'box'})
 
                 self.results.append(obj)
-                
-        self.__getitem__(1)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -157,9 +155,9 @@ def parse_args():
         # "gpu_id": 2,
         "auto_gpu_id": True,
         "continue_train": False,
-        "train_dataset_dir": "/data_ssd/ochuman",
-        "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
-        "checkpoint_dir": "/checkpoint/segment",
+        "train_dataset_dir": "",
+        "val_dataset_dir": "",
+        "checkpoint_dir": "",
         "epoch": 30,
         "show_iter": 20,
         "val_iter": 120,
