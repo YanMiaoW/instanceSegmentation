@@ -6,12 +6,15 @@ import glob
 import json
 import random
 from imgaug import augmenters as iaa
-from typing import AnyStr, Generator
+from imgaug.augmentables import Keypoint, KeypointsOnImage
+from imgaug.augmentables.bbs import BoundingBox, BoundingBoxesOnImage
+from imgaug.augmentables.segmaps import SegmentationMapsOnImage
+from typing import AnyStr, Generator, Callable
 
 # type
 TYPE = {'other', 'sub_dict', 'sub_list', 'class', 'keypoint_status',
-        'image_path', 'heatmap_path', 'imencode', 'body_part_name',
-        'bitmap',  'mask_path', 'box_xyxy', 'keypoint_xy', 'polygon'}
+        'image_path', 'heatmap_path', 'imencode',
+        'bitmap',  'mask_path', 'box_xyxy', 'point_xy', 'polygon'}
 
 AUG_TYPE = {'image', 'heatmap', 'mask'}
 
@@ -19,23 +22,23 @@ AUG_TYPE = {'image', 'heatmap', 'mask'}
 ANN_CHOICES = {'meta', 'object', 'image', 'mix',
                'class', 'segment_mask', 'class_mask'}
 
-OBJ_CHOICES = {'box', 'class', 'instance_mask', 'body_keypoint'}
+OBJ_CHOICES = {'box', 'class', 'instance_mask',
+               'instance_image', 'body_keypoint'}
 
-KEYPOINT_CHOICES = {'name', 'status', 'point'}
+BODY_PART_CHOICES = {"head", "neck", "right_shoulder", "right_elbow", "right_wrist",
+                     "left_shoulder", "left_elbow", "left_wrist",
+                     "right_hip", "right_knee", "right_ankle",
+                     "left_hip", "left_knee", "left_ankle", 'right_ear',
+                     'left_ear', 'nose', 'right_eye', 'left_eye'}
+
+KEYPOINT_CHOICES = {'status', 'point'}
 
 CLS_MASKS_CHOICES = {'class', 'segment_mask'}
 
 # value
 KEYPOINT_STATUS = {'missing', 'vis', 'not_vis'}
 
-BODY_PART_NAME = {"head", "neck", "right_shoulder", "right_elbow", "right_wrist",
-                  "left_shoulder", "left_elbow", "left_wrist",
-                  "right_hip", "right_knee", "right_ankle",
-                  "left_hip", "left_knee", "left_ankle", 'right_ear',
-                  'left_ear', 'nose', 'right_eye', 'left_eye'}
-
 CLASS = {'person', 'background'}
-
 
 
 '''
@@ -62,15 +65,15 @@ json可以有自定义的条目，不过为了多个数据集可以联合操作�
                 class::class 类别
                 mask_path::instance_mask 实例分割掩码
                 polygon::instance_mask 实例分割掩码polygon（可能）
-                sub_list::body_keypoint 人体关键点
-                    [
+                sub_dict::body_keypoint 人体关键点
+                    {
+                        sub_dict::head 人体部位名称
                         {
-                            body_part_name::name 人体部位名称
                             keypoint_status::status 关键点状态（缺失，可视，不可视）
-                            keypoint_xy::point 关键点坐标xy
+                            point_xy::point 关键点坐标xy
                         },
                         ...
-                    ]
+                    }
             },
             ...
         ]
@@ -90,7 +93,7 @@ json可以有自定义的条目，不过为了多个数据集可以联合操作�
 def key_combine(key: AnyStr, type_: AnyStr) -> AnyStr:
     assert type_ in TYPE or type_ in AUG_TYPE
     assert any(key in s for s in [ANN_CHOICES, OBJ_CHOICES, KEYPOINT_CHOICES,
-                                  CLS_MASKS_CHOICES, BODY_PART_NAME])
+                                  CLS_MASKS_CHOICES, BODY_PART_CHOICES])
     return f'{type_}::{key}'
 
 
@@ -129,8 +132,8 @@ def common_ann_loader(dataset_dir: AnyStr, shuffle: bool = False) -> dict:
 
 
 def common_choice(result: dict, key_choices: set = None, type_choices: set = None, key_type_choices: set = None,
-                  key_removes: set = None, type_removes: set = None, key_type_removes: set = None) -> dict:
-    for key_type in list(result.keys()):
+                  key_removes: set = None, type_removes: set = None, key_type_removes: set = None, r: bool = False) -> dict:
+    for key_type, value in list(result.items()):
         key, type_ = key_decompose(key_type)
 
         if key_choices is not None and key not in key_choices:
@@ -151,6 +154,15 @@ def common_choice(result: dict, key_choices: set = None, type_choices: set = Non
         if key_type_removes is not None and key_type in key_type_removes:
             del result[key_type]
 
+        if r:
+            if type_ == 'sub_list':
+                for i in value:
+                    common_choice(i, key_choices, type_choices, key_type_choices,
+                                  key_removes, type_removes, key_type_removes, r)
+            elif type_ == 'sub_dict':
+                common_choice(value, key_choices, type_choices, key_type_choices,
+                              key_removes, type_removes, key_type_removes, r)
+
 
 def common_filter(result: dict, yield_filter: Generator[bool, dict, bool], has_type: bool = False) -> bool:
     ''' yield_filter一定要有yield（生成器）， yield返回的都是true，common_filter才会返回true '''
@@ -160,24 +172,22 @@ def common_filter(result: dict, yield_filter: Generator[bool, dict, bool], has_t
                 return False
         return True
     else:
-        no_type_result = result.copy()
-
         def remove_type(result: dict) -> None:
-            for key_type, value in result.copy().items():
+            no_type_result = {}
+            for key_type, value in result.items():
                 key, type_ = key_decompose(key_type)
                 if type_ == 'sub_dict':
-                    remove_type(value)
+                    no_type_result[key] = remove_type(value)
                 elif type_ == 'sub_list':
-                    for i, sub in enumerate(value):
-                        remove_type(sub)
-                        value[i] = sub
-                    result[key] = value
-                    del result[key_type]
+                    no_type_result[key] = []
+                    for sub in value:
+                        no_type_result[key].append(remove_type(sub))
                 else:
-                    result[key] = value
-                    del result[key_type]
+                    no_type_result[key] = value
 
-        remove_type(no_type_result)
+            return no_type_result
+
+        no_type_result = remove_type(result)
 
         for b in yield_filter(no_type_result):
             if not b:
@@ -185,19 +195,18 @@ def common_filter(result: dict, yield_filter: Generator[bool, dict, bool], has_t
         return True
 
 
-def common_transfer(result: dict) -> None:
+def common_transfer(result: dict, r: bool = False) -> None:
     for key_type, value in list(result.items()):
         key, type_ = key_decompose(key_type)
 
         if type_ == 'image_path':
-            result[key_combine(key, 'image')] = cv.imread(
-                value, cv.IMREAD_COLOR)
+            image_bgr = cv.imread(value, cv.IMREAD_COLOR)
+            image_rgb = cv.cvtColor(image_bgr, cv.COLOR_BGR2RGB)
+            result[key_combine(key, 'image')] = image_rgb
             del result[key_type]
 
         if type_ == 'heatmap_path':
-            result[key_combine(key, 'heatmap')] = \
-                cv.imread(value, cv.IMREAD_COLOR)
-            del result[key_type]
+            assert False, 'not support'
 
         if type_ == 'mask_path':
             result[key_combine(key, 'mask')] = cv.imread(
@@ -210,15 +219,32 @@ def common_transfer(result: dict) -> None:
         if type_ == 'keypoint_status':
             assert value in KEYPOINT_STATUS
 
-        if type_ == 'body_part_name':
-            assert value in BODY_PART_NAME
-
         if type_ == 'polygon':
             assert False, 'not support'
 
+        if r:
+            if type_ == 'sub_list':
+                for i in value:
+                    common_transfer(i, r)
+            elif type_ == 'sub_dict':
+                common_transfer(value, r)
 
-def common_aug(result: dict, imgaug: iaa.Augmenter) -> None:
-    aug = imgaug._to_deterministic()
+
+def common_aug(result: dict, imgaug: iaa.Augmenter, shape: tuple = None, r: bool = False) -> None:
+
+    aug = imgaug if imgaug.deterministic else imgaug._to_deterministic()
+
+    if shape is None:
+        for key_type, value in list(result.items()):
+            key, type_ = key_decompose(key_type)
+
+            if type_ == 'image' or type_ == 'mask':
+                shape = value.shape
+                break
+
+        if shape is None:
+            assert False, 'imgaug must imput shape argument, but not any image or mask find in result. please appoint shape value.'
+
     for key_type, value in list(result.items()):
         key, type_ = key_decompose(key_type)
 
@@ -226,28 +252,33 @@ def common_aug(result: dict, imgaug: iaa.Augmenter) -> None:
             result[key_type] = aug.augment_images([value])[0]
 
         if type_ == 'mask':
-            result[key_type] = aug.augment_images([value])[0]
+            segmap = SegmentationMapsOnImage(value, shape=shape)
+            seg = aug.augment_segmentation_maps(segmap).get_arr()
+
+            result[key_type] = seg
 
         if type_ == 'box_xyxy':
-            result[key_type] = aug.augment_keypoints(value)[0]
+            x1, y1, x2, y2 = value
+            bbs = BoundingBoxesOnImage([
+                BoundingBox(x1, y1, x2, y2)
+            ], shape=shape)
+            aug_box = aug.augment_bounding_boxes(bbs).bounding_boxes[0]
 
-        if type_ == 'keypoint_xy':
-            result[key_type] = aug.augment_keypoints(value)[0]
+            result[key_type] = [aug_box.x1, aug_box.y1, aug_box.x2, aug_box.y2]
 
+        if type_ == 'point_xy':
+            x, y = value
+            kps = KeypointsOnImage([Keypoint(x=x, y=y)], shape=shape)
+            aug_kp = aug.augment_keypoints(kps)[0]
 
-# depreciated 自己用json操作更方便
-# def common_merge(*results: dict) -> None:
-#     assert len(results) > 1
-#     out = {}
-#     for result in results[::-1]:
-#         for key_type, value in result.items():
-#             key, type_ = key_decompose(key_type)
+            result[key_type] = [aug_kp.x, aug_kp.y]
 
-#             if key_type not in out:
-#                 out[key_type] = value
-
-#     for key, value in out.items():
-#         results[0][key] = value
+        if r:
+            if type_ == 'sub_list':
+                for i in value:
+                    common_aug(i, aug, shape, r)
+            elif type_ == 'sub_dict':
+                common_aug(value, aug, shape, r)
 
 
 if __name__ == "__main__":
