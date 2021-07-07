@@ -22,9 +22,7 @@ def test1(dataset_dir):
                 bw, bh = x1-x0, y1-y0
                 c = obj['class']
 
-                yield 'instance_mask' in obj
-
-                if bw < 50 or bh < 50 or c not in ['person']:
+                if bw < 50 or bh < 50 or c not in ['person'] or 'instance_mask' not in obj:
                     del objs[i0]
 
             yield len(objs) > 0
@@ -49,6 +47,8 @@ def test1(dataset_dir):
             common_transfer(obj)
 
             obj[key_combine('instance_image', 'image')] = image
+
+            # aug过程
 
             def sometimes(x): return iaa.Sometimes(1.0, x)
 
@@ -89,6 +89,8 @@ def test1(dataset_dir):
             ])
 
             common_aug(obj, aug, r=True)
+
+            # 数据集显示
 
             instance_mask = obj[key_combine('instance_mask', 'mask')]
             instance_image = obj[key_combine('instance_image', 'image')]
@@ -132,9 +134,12 @@ def show_dataset(dataset_dir):
         common_aug(ann, aug)
 
         image = ann[key_combine('image', 'image')]
+
         h, w = image.shape[:2]
         window_name = f'image | mix | mask   height:{h} width:{w}   time:{int((time.time() - start)*1000)}'
+
         mix = ann[key_combine('mix', 'image')]
+
         mask = ann[key_combine('segment_mask', 'mask')]
         mask = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
 

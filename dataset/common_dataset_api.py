@@ -232,9 +232,10 @@ def common_transfer(result: dict, r: bool = False) -> None:
 
 def common_aug(result: dict, imgaug: iaa.Augmenter, shape: tuple = None, r: bool = False) -> None:
 
-    aug = imgaug if imgaug.deterministic else imgaug._to_deterministic()
+    aug = imgaug if imgaug.deterministic else imgaug._to_deterministic() # 冻结随机因子，多次调用augment不变
 
     if shape is None:
+        # 初始化shape，一些坐标需要参考系才有价值，比如绕图像中心旋转
         for key_type, value in list(result.items()):
             key, type_ = key_decompose(key_type)
 
@@ -243,7 +244,7 @@ def common_aug(result: dict, imgaug: iaa.Augmenter, shape: tuple = None, r: bool
                 break
 
         if shape is None:
-            assert False, 'imgaug must imput shape argument, but not any image or mask find in result. please appoint shape value.'
+            assert False, 'imgaug must have input shape argument, but not any image or mask find in result. please input shape value.'
 
     for key_type, value in list(result.items()):
         key, type_ = key_decompose(key_type)
