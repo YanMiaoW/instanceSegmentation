@@ -73,6 +73,8 @@ class InstanceCommonDataset(Dataset):
                               'instance_mask', 'instance_image', 'box'})
 
                 self.results.append(obj)
+                
+        self.__getitem__(1)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -135,7 +137,7 @@ class InstanceCommonDataset(Dataset):
 
         common_aug(result, aug, r=True)
 
-        image = result[key_combine('image', 'image')]
+        image = result[key_combine('instance_image', 'image')]
         mask = result[key_combine('instance_mask', 'mask')]
 
         image_pil = Image.fromarray(image)
@@ -144,7 +146,7 @@ class InstanceCommonDataset(Dataset):
         image_tensor = self.transform(image_pil)
         mask_tensor = self.label_transform(mask_pil)
 
-        return image_tensor, mask_tensor, index
+        return image_tensor, mask_tensor
 
     def __len__(self):
         return len(self.results)
@@ -294,7 +296,7 @@ if __name__ == "__main__":
                         outputs2 = model.train_batch(inputs2)
                         val_ious.append(tensors_mean_iou(outputs2, labels2))
 
-                    val_iou = sum(val_iou)/len(val_iou)
+                    val_iou = sum(val_ious)/len(val_ious)
 
                     print(
                         f"{branch_name}",
