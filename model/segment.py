@@ -318,7 +318,7 @@ class BottleneckUp_Res(nn.Module):  # upsample
         return out
 
 class Segment(nn.Module):
-    def __init__(self, num_classes=2, use_aux = False):
+    def __init__(self, num_classes=1, use_aux = False):
         super().__init__()
         self.num_classes = num_classes
         self.export = False
@@ -420,6 +420,15 @@ class Segment(nn.Module):
                     nn.init.zeros_(m.bias)
 
 
+    def train_batch(self,x):
+        out = self(x)
+        return torch.sigmoid(out)
+
+    def test_batch(self,x):
+        out = self(x)
+        return torch.sigmoid(out)
+
+
     def forward(self, x, target=None):
         # init section
         # init_out = self.init_conv(x)
@@ -461,6 +470,11 @@ class Segment(nn.Module):
         bottle6_1 = self.bottle6_1(bottle5_2)
         out = self.bottle6_2(bottle6_1)
         #out = bottle6_1
+
+        out = torch.sigmoid(out)
+
+        return out
+
 
         if self.export == True:
             return torch.sigmoid(out)

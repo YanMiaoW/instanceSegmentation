@@ -1,25 +1,23 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from debug_function import *
 import numpy as np
 import os
 import cv2 as cv
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 import torch.optim as optim
+from PIL import Image
 
-from dataset.common_dataset_api import *
 from imgaug import augmenters as iaa
 import imgaug as ia
-from model.segment import Segment
-from PIL import Image
 from pygit2 import Repository
 
-repo = Repository('.')
-head = repo.lookup_reference('HEAD').resolve()
-head = repo.head
-branch_name = head.name.split('/')[-1]
+from dataset.common_dataset_api import *
+from model.segment import Segment
+from dataset.common_dataset_api import *
+from common_func import path_decompose
+from debug_function import *
 
 
 class SegmentCommonDataset(Dataset):
@@ -27,21 +25,18 @@ class SegmentCommonDataset(Dataset):
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
 
-        if test:
-            self.aug = iaa.Noop()
-        else:
-            self.aug = iaa.Noop()
+        out_size = (480, 480)
 
         self.transform = transforms.Compose(
             [
-                transforms.Resize((480, 480)),
+                transforms.Resize(out_size),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         )
 
         self.label_transform = transforms.Compose(
-            [transforms.Resize((480, 480)), transforms.ToTensor()]
+            [transforms.Resize(out_size), transforms.ToTensor()]
         )
 
         self.results = []
@@ -78,7 +73,7 @@ class SegmentCommonDataset(Dataset):
         image = result[key_combine('image', 'image')]
         mask = result[key_combine('segment_mask', 'mask')]
 
-        image_pil = Image.fromarray(cv.cvtColor(image, cv.COLOR_BGR2RGB))
+        image_pil = Image.fromarray(image)
         mask_pil = Image.fromarray(mask)
 
         image_tensor = self.transform(image_pil)
@@ -88,27 +83,6 @@ class SegmentCommonDataset(Dataset):
 
     def __len__(self):
         return len(self.results)
-
-
-def mask_iou(masks, labels):
-    iou_total = 0
-    for mask, label in zip(masks, labels):
-        mask, label = mask[0] > 0.5, label[0] > 0.5
-        union = mask | label
-        inter = mask & label
-        iou = inter.sum() / union.sum()
-        iou_total += iou.item() if iou.device != 'cpu' else iou
-
-    return iou_total / len(masks)
-    # return iou
-
-
-def path_decompose(path):
-    basename = os.path.basename(path)
-    dirname = os.path.dirname(path)
-    ext = os.path.splitext(path)[-1][1:]
-    basename = os.path.splitext(basename)[0]
-    return dirname, basename, ext
 
 
 def parse_args():
@@ -137,6 +111,11 @@ def parse_args():
 
 
 if __name__ == "__main__":
+    repo = Repository('.')
+    head = repo.lookup_reference('HEAD').resolve()
+    head = repo.head
+    branch_name = head.name.split('/')[-1]
+
     args = parse_args()
     show_img_tag = True
 
@@ -229,7 +208,7 @@ if __name__ == "__main__":
             inputs, labels = inputs.to(device), labels.to(device)
             optimizer.zero_grad()
 
-            outputs, _ = model(inputs)
+            outputs = model(inputs)
             outputs = torch.sigmoid(outputs)
             loss = criterion(outputs, labels)
             loss.backward()
