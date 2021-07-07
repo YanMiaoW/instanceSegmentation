@@ -3,11 +3,10 @@ import numpy as np
 import tqdm
 from shutil import copyfile
 from ochumanApi.ochuman import OCHuman
-from dataset.common_dataset_api import key_combine, BODY_PART_NAME
+from dataset.common_dataset_api import key_combine, BODY_PART_CHOICES
 import ochumanApi.vis as vistool
 from ochumanApi.ochuman import Poly2Mask
 import json
-import math
 
 
 def path_decompose(path):
@@ -38,11 +37,11 @@ def get_body_keypoint(kpt):
         map_visible = {value: key for key, value in visible_map.items()}
         # if connection is None:
         connection = [[16, 14], [14, 12], [17, 15],
-                          [15, 13], [12, 13], [6, 12],
-                          [7, 13], [6, 7], [6, 8],
-                          [7, 9], [8, 10], [9, 11],
-                          [2, 3], [1, 2], [1, 3],
-                          [2, 4], [3, 5], [4, 6], [5, 7]]
+                      [15, 13], [12, 13], [6, 12],
+                      [7, 13], [6, 7], [6, 8],
+                      [7, 9], [8, 10], [9, 11],
+                      [2, 3], [1, 2], [1, 3],
+                      [2, 4], [3, 5], [4, 6], [5, 7]]
     elif npart == 19:  # ochuman
         part_names = ["right_shoulder", "right_elbow", "right_wrist",
                       "left_shoulder", "left_elbow", "left_wrist",
@@ -50,18 +49,20 @@ def get_body_keypoint(kpt):
                       "left_hip", "left_knee", "left_ankle",
                       "head", "neck"] + \
             ['right_ear', 'left_ear', 'nose', 'right_eye', 'left_eye']
+
         visible_map = {0: 'missing',
                        1: 'vis',
                        2: 'self_occluded',
                        3: 'others_occluded'}
+
         map_visible = {value: key for key, value in visible_map.items()}
         connection = [[16, 19], [13, 17], [4, 5],
-                          [19, 17], [17, 14], [5, 6],
-                          [17, 18], [14, 4], [1, 2],
-                          [18, 15], [14, 1], [2, 3],
-                          [4, 10], [1, 7], [10, 7],
-                          [10, 11], [7, 8], [11, 12], [8, 9],
-                          [16, 4], [15, 1]]  # TODO
+                      [19, 17], [17, 14], [5, 6],
+                      [17, 18], [14, 4], [1, 2],
+                      [18, 15], [14, 1], [2, 3],
+                      [4, 10], [1, 7], [10, 7],
+                      [10, 11], [7, 8], [11, 12], [8, 9],
+                      [16, 4], [15, 1]]  # TODO
 
     colors = [[255, 0, 0], [255, 85, 0], [255, 170, 0],
               [255, 255, 0], [170, 255, 0], [85, 255, 0],
@@ -70,20 +71,14 @@ def get_body_keypoint(kpt):
               [0, 0, 255], [85, 0, 255], [170, 0, 255],
               [255, 0, 255], [255, 0, 170], [255, 0, 85]]
 
-    idxs_draw = np.where(kpt[:, 2] != map_visible['missing'])[0]
-    if len(idxs_draw) == 0:
-        return img
+    body_keypoint = {}
 
-    body_keypoint = []
+    for i0, vs in enumerate(kpt):
+        x, y, v = vs
 
-    for idx in idxs_draw:
-        key = part_names[idx]
-        if not key in BODY_PART_NAME:
-            continue
-        x, y, v = kpt[idx, :]
+        key = part_names[i0]
 
         one_key = {}
-        one_key[key_combine('name', 'body_part_name')] = key
         if len(part_names) == 19:
             key_map = {
                 0: 'missing',
@@ -99,10 +94,10 @@ def get_body_keypoint(kpt):
             }
 
         one_key[key_combine('status', 'keypoint_status')] = key_map[v]
-        one_key[key_combine('point', 'keypoint_xy')] = [int(x), int(y)]
+        one_key[key_combine('point', 'point_xy')] = [int(x), int(y)]
 
-        body_keypoint.append(one_key)
-        
+        body_keypoint[key_combine(key, 'sub_dict')] = one_key
+
     return body_keypoint
 
 
@@ -187,7 +182,7 @@ def transfer_ochuman(ann_path, img_dir, save_dir):
                 cv.imwrite(os.path.join(
                     instance_name_dir, str(i0)+'.png'), instance_mask)
                 obj[key_combine('instance_mask', 'mask_path')] = os.path.join(
-                    'instance_mask', str(i0)+'.png')
+                    'instance_mask', name, str(i0)+'.png')
 
                 img_show = vistool.draw_mask(
                     img_show, instance_mask, thickness=3, color=colors[i0 % len(colors)])
@@ -198,7 +193,7 @@ def transfer_ochuman(ann_path, img_dir, save_dir):
 
                 body_keypoint = get_body_keypoint(kpt)
 
-                obj[key_combine('body_keypoint', 'sub_list')] = body_keypoint
+                obj[key_combine('body_keypoint', 'sub_dict')] = body_keypoint
 
             objs.append(obj)
 
@@ -209,11 +204,14 @@ def transfer_ochuman(ann_path, img_dir, save_dir):
         nd[key_combine('segment_mask', 'mask_path')] = os.path.join(
             'segment_mask', name+'.png')
 
+        copyfile(os.path.join(segment_mask_dir, name+'.png'),
+                 os.path.join(class_mask_dir, name, 'person.png'))
+
         class_masks = []
         class_mask = {}
         class_mask[key_combine('class', 'class')] = 'person'
         class_mask[key_combine('segment_mask', 'mask_path')] = os.path.join(
-            'segment_mask', name+'.png')
+            'class_mask', name, 'person.png')
         class_masks.append(class_mask)
         nd[key_combine('class_mask', 'sub_list')] = class_masks
 
