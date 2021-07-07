@@ -11,24 +11,7 @@ def test1(dataset_dir):
 
     for ann in common_ann_loader(dataset_dir):
 
-        common_choice(ann, key_choices={'image', 'object', 'meta'})
-
-        def filter(result):
-            yield 'object' in result
-
-            objs = result['object']
-            for i0, obj in enumerate(objs):
-                x0, y0, x1, y1 = obj['box']
-                bw, bh = x1-x0, y1-y0
-                c = obj['class']
-
-                if bw < 50 or bh < 50 or c not in ['person'] or 'instance_mask' not in obj:
-                    del objs[i0]
-
-            yield len(objs) > 0
-
-        if not common_filter(ann, filter):
-            continue
+        common_choice(ann, key_choices={'image', 'object'})
 
         common_transfer(ann)
         image = ann[key_combine('image', 'image')]
@@ -37,6 +20,20 @@ def test1(dataset_dir):
 
         for obj in objs:
             start = time.time()
+
+            def filter(result):
+                yield 'instance_mask' in result
+
+                if 'class' in result:
+                    yield result['class'] in ['person']
+
+                yield 'box' in result
+                x0, y0, x1, y1 = result['box']
+                bw, bh = x1-x0, y1-y0
+                yield bw > 50 and bh > 50
+
+            if not common_filter(obj, filter):
+                continue
 
             box = obj[key_combine('box', 'box_xyxy')]
             class_name = obj[key_combine('class', 'class')]
