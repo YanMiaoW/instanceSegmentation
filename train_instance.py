@@ -46,29 +46,26 @@ class InstanceCommonDataset(Dataset):
 
         for ann in common_ann_loader(dataset_dir):
 
-            common_choice(ann, key_choices={'image', 'object', 'meta'})
-
-            def filter(result):
-                yield 'object' in result
-
-                objs = result['object']
-                for i0, obj in enumerate(objs):
-                    x0, y0, x1, y1 = obj['box']
-                    bw, bh = x1-x0, y1-y0
-                    c = obj['class']
-
-                    if not all([bw > 50, bh > 50, c in ['person'], 'instance_mask' in obj]):
-                        del objs[i0]
-
-                yield len(objs) > 0
-
-            if not common_filter(ann, filter):
-                continue
+            common_choice(ann, key_choices={'image', 'object'})
 
             objs = ann[key_combine('object', 'sub_list')]
             image_path = ann[key_combine('image', 'image_path')]
 
             for obj in objs:
+
+                def filter(result):
+                    yield 'instance_mask' in result
+
+                    if 'class' in result:
+                        yield result['class'] in ['person']
+
+                    yield 'box' in result
+                    x0, y0, x1, y1 = result['box']
+                    bw, bh = x1-x0, y1-y0
+                    yield bw > 50 and bh > 50
+
+                if not common_filter(obj, filter):
+                    continue
 
                 obj[key_combine('instance_image', 'image_path')] = image_path
 
