@@ -191,7 +191,8 @@ def common_filter(result: dict, yield_filter: Generator[bool, dict, bool], has_t
 
         for b in yield_filter(no_type_result):
             if not b:
-                return False
+                return False    
+        
         return True
 
 

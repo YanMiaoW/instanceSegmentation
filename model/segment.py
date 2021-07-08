@@ -6,6 +6,7 @@ from torch.autograd import Variable
 import pdb
 import cv2
 import numpy as np
+from debug_function import *
 
 # from net.common import Conv, Focus, SEModule, autopad, fuse_conv_and_bn, init_head_s4
 
@@ -421,7 +422,7 @@ class Segment(nn.Module):
 
 
     def train_batch(self,x):
-        out = self(x)
+        out = self.forward(x)
         return torch.sigmoid(out)
 
     def test_batch(self,x):
@@ -470,8 +471,6 @@ class Segment(nn.Module):
         bottle6_1 = self.bottle6_1(bottle5_2)
         out = self.bottle6_2(bottle6_1)
         #out = bottle6_1
-
-        out = torch.sigmoid(out)
 
         return out
 
