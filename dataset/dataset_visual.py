@@ -20,7 +20,6 @@ def mask2box(mask):
     else:
         return [min(x1s), min(y1s), max(x2s), max(y2s)]
 
-
 def draw_box(image, box: list, color=(0, 255, 0), thickness=None):
     if thickness is None:
         thickness = int(max(min(image.shape[:2])*0.005, 1))
@@ -39,14 +38,14 @@ def draw_mask(image, mask, color=(255, 255, 0), alpha=0.5):
 def draw_label(image, text: str, xy: list, color=[0, 255, 0], size_percent=1, thickness=1):
     h, w = image.shape[:2]
     r = math.hypot(h, w)
-    r *= 0.001
+    r *= 0.001*size_percent
 
     x, y = xy
     x += int(r*10)
     y += int(r*30)
 
     cv.putText(image, text=text, org=[x, y],
-               fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=r*size_percent, color=color,
+               fontFace=cv.FONT_HERSHEY_SIMPLEX, fontScale=r, color=color,
                thickness=thickness, lineType=cv.LINE_AA)
 
 
@@ -94,6 +93,7 @@ def draw_keypoint(image, keypoint: dict, labeled=False):
         else:
             return 0, 0, 'missing'
 
+    # 画连接线
     for idx in range(len(connection)):
         idx1, idx2 = connection[idx]
         key1, key2 = connection2key[idx1], connection2key[idx2]
@@ -113,6 +113,7 @@ def draw_keypoint(image, keypoint: dict, labeled=False):
                    int(angle), 0, 360, color, -1)
         image[:] = image*0.5 + draw*0.5
 
+    # 画肢体点
     for partname_key_type in keypoint:
         key, _ = key_decompose(partname_key_type)
 
@@ -130,3 +131,18 @@ def draw_keypoint(image, keypoint: dict, labeled=False):
         if status != 'missing' and labeled:
             draw_label(image, key, [x, y], color, size_percent=0.5)
 
+
+if __name__ == '__main__':
+    from debug_function import *
+    mask = cv.imread('/Users/yanmiao/yanmiao/data/HumanTest/1.jpg',cv.IMREAD_GRAYSCALE)
+    # confidence = mask/255.0
+    # heatmap = confidence2heatmap(confidence)
+    # show = cv.cvtColor(heatmap,cv.COLOR_RGB2BGR)
+    # 热力图
+    heatmap = cv.applyColorMap(mask, cv.COLORMAP_JET)
+
+    cv.imshow("aa",heatmap)
+    cv.waitKey(0)
+    cv.imshow('gray', mask)
+    cv.waitKey(0)
+    cv.destroyAllWindows()

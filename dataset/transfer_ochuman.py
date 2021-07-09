@@ -7,6 +7,7 @@ from dataset.common_dataset_api import key_combine, BODY_PART_CHOICES
 import ochumanApi.vis as vistool
 from ochumanApi.ochuman import Poly2Mask
 import json
+import os
 
 
 def path_decompose(path):
