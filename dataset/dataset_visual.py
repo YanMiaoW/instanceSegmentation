@@ -20,6 +20,7 @@ def mask2box(mask):
     else:
         return [min(x1s), min(y1s), max(x2s), max(y2s)]
 
+
 def draw_box(image, box: list, color=(0, 255, 0), thickness=None):
     if thickness is None:
         thickness = int(max(min(image.shape[:2])*0.005, 1))
@@ -134,15 +135,17 @@ def draw_keypoint(image, keypoint: dict, labeled=False):
 
 if __name__ == '__main__':
     from debug_function import *
-    mask = cv.imread('/Users/yanmiao/yanmiao/data/HumanTest/1.jpg',cv.IMREAD_GRAYSCALE)
+    mask = cv.imread(
+        '/Users/yanmiao/yanmiao/data/HumanTest/1.jpg', cv.IMREAD_GRAYSCALE)
     # confidence = mask/255.0
     # heatmap = confidence2heatmap(confidence)
     # show = cv.cvtColor(heatmap,cv.COLOR_RGB2BGR)
     # 热力图
-    heatmap = cv.applyColorMap(mask, cv.COLORMAP_JET)
+    # 其他map https://docs.opencv.org/4.5.2/d3/d50/group__imgproc__colormap.html
+    heatmap = cv.applyColorMap(mask, cv.COLORMAP_HOT)
 
-    cv.imshow("aa",heatmap)
+    cv.imshow("aa", heatmap)
     cv.waitKey(0)
     cv.imshow('gray', mask)
-    cv.waitKey(0)
+    cv.waitKey(5)
     cv.destroyAllWindows()
