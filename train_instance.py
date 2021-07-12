@@ -207,10 +207,10 @@ class InstanceCommonDataset(Dataset):
         mask_pil = Image.fromarray(mask)
         heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
 
-        image_tensor = self.img_transform(image_pil)
-        mask_tensor = self.mask_transform(mask_pil)
+        image_tensor = self.img_transform(image)
+        mask_tensor = self.mask_transform(mask)
         heatmap_tensors = [self.heatmap_transfrom(
-            heatmap_pil) for heatmap_pil in heatmap_pils]
+            heatmap_pil) for heatmap_pil in heatmaps]
         heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
 
         return image_tensor, mask_tensor, heatmap_tensor
@@ -222,16 +222,17 @@ class InstanceCommonDataset(Dataset):
 def parse_args():
     args = {
         # "gpu_id": 2,
-        # "auto_gpu_id": True,
+        "auto_gpu_id": True,
         # "continue_train": True,
         "syn_train": False,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
-        # "train_dataset_dir": "/data_ssd/ochuman",
+        "train_dataset_dir": "/data_ssd/ochuman",
+        "val_dataset_dir": "/data_ssd/ochuman",
         # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
-        # "checkpoint_dir": "/checkpoint/segment",
-        "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-        "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        "checkpoint_dir": "/checkpoint/segment",
+        # "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
         # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
-        "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+        # "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
         # "checkpoint_filename": "union_best.pth",
         # "pretrained_path":"",
         "epoch": 30,

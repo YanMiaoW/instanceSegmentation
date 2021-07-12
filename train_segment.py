@@ -16,7 +16,7 @@ from pygit2 import Repository
 from dataset.common_dataset_api import *
 from model.segment import Segment
 from dataset.common_dataset_api import *
-from common_func import path_decompose
+from common import path_decompose
 from debug_function import *
 
 
