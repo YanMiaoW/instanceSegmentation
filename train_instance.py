@@ -9,6 +9,7 @@ import torchvision.transforms as transforms
 import torch.optim as optim
 from PIL import Image
 import random
+import math
 
 from imgaug import augmenters as iaa
 import imgaug as ia
@@ -19,6 +20,51 @@ from common import dict2class, get_git_branch_name, get_minimum_memory_footprint
 from debug_function import *
 from model.segment import Segment
 
+ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
+                    "left_shoulder", "left_elbow", "left_wrist",
+                    "right_hip", "right_knee", "right_ankle",
+                    "left_hip", "left_knee", "left_ankle",
+                    'right_ear', 'left_ear',
+                    'nose', 'right_eye', 'left_eye']
+
+
+def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
+
+    r = math.sqrt(math.log(threshold)*(-sigma**2))
+
+    heatmaps = []
+
+    for key in ORDER_PART_NAMES:
+
+        heatmap = np.zeros(shape, dtype=np.float32)
+
+        key_type = key_combine(key, 'sub_dict')
+
+        if key_type in keypoint and\
+            keypoint[key_type][
+                key_combine('status', 'keypoint_status')] == 'vis':
+
+            x, y = keypoint[key_type][key_combine('point', 'point_xy')]
+            h, w = shape
+
+            x_min = max(0, int(x - r))
+            x_max = min(w-1, int(x+r+1))
+            y_min = max(0, int(y - r))
+            y_max = min(h-1, int(y+r+1))
+
+            xs = np.arange(x_min, x_max)
+            ys = np.arange(y_min, y_max)[:, np.newaxis]
+
+            e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
+
+            idxs = np.where(e_table > threshold)
+
+            heatmap[y_min:y_max, x_min:x_max][idxs] = e_table[idxs]
+
+        heatmaps.append(heatmap)
+
+    return heatmaps
+
 
 class InstanceCommonDataset(Dataset):
 
@@ -27,17 +73,23 @@ class InstanceCommonDataset(Dataset):
         self.test = test
 
         out_size = (480, 480)
+        self.out_size = out_size
 
-        self.transform = transforms.Compose(
+        self.img_transform = transforms.Compose(
             [
-                transforms.Resize(out_size),
                 transforms.ToTensor(),
                 transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
             ]
         )
 
-        self.label_transform = transforms.Compose(
-            [transforms.Resize(out_size), transforms.ToTensor()]
+        self.mask_transform = transforms.Compose(
+            [transforms.ToTensor()]
+        )
+
+        self.heatmap_transfrom = transforms.Compose(
+            [
+                transforms.ToTensor(),
+            ]
         )
 
         self.results = []
@@ -56,6 +108,10 @@ class InstanceCommonDataset(Dataset):
                 def filter(result):
                     yield 'instance_mask' in result
 
+                    yield 'body_keypoint' in result
+
+                    yield sum(keypoint['status'] != 'missing' for keypoint in result['body_keypoint'].values()) > 9
+
                     if 'class' in result:
                         yield result['class'] in ['person']
 
@@ -70,9 +126,11 @@ class InstanceCommonDataset(Dataset):
                 obj[key_combine('image', 'image_path')] = image_path
 
                 common_choice(obj, key_choices={
-                              'instance_mask', 'instance_image', 'box'})
+                              'instance_mask', 'image', 'box', 'body_keypoint'})
 
                 self.results.append(obj)
+
+        # self.__getitem__(1)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -98,12 +156,12 @@ class InstanceCommonDataset(Dataset):
         else:
             aug = iaa.Sequential([
                 iaa.Affine(translate_px={"x": (tx, tx), "y": (ty, ty)}),
-                sometimes(
-                    iaa.Affine(rotate=(-25, 25)),
-                ),
+                # sometimes(
+                #     iaa.Affine(rotate=(-25, 25)),
+                # ),
             ])
 
-        # common_aug(result, aug, r=True)
+        common_aug(result, aug, r=True)
 
         instance_mask = result[key_combine('instance_mask', 'mask')]
         instance_box = mask2box(instance_mask)
@@ -112,12 +170,13 @@ class InstanceCommonDataset(Dataset):
             instance_box = [0, 0, iw, ih]
 
         x1, y1, x2, y2 = instance_box
-        left = -x1
-        right = x2 - iw
-        top = -y1
-        bottom = y2 - ih
-        aw = int((x2-x1)*0.2)
-        ah = int((y2-y1)*0.2)
+        pad = 16
+        left = -x1 + pad
+        right = x2 - iw + pad
+        top = -y1 + pad
+        bottom = y2 - ih + pad
+        # aw = int((x2-x1)*0.2)
+        # ah = int((y2-y1)*0.2)
 
         if self.test:
             aug = iaa.CropAndPad(((top, top), (right, right),
@@ -132,20 +191,29 @@ class InstanceCommonDataset(Dataset):
                 # sometimes(iaa.AdditiveGaussianNoise(
                 #     loc=0, scale=(0.0, 0.05*255), per_channel=0.5)),
                 # sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
+                iaa.Resize(
+                    {"height": self.out_size[0], "width": self.out_size[1]})
             ])
 
-        # common_aug(result, aug, r=True)
+        common_aug(result, aug, r=True)
 
-        image = result[key_combine('instance_image', 'image')]
+        image = result[key_combine('image', 'image')]
         mask = result[key_combine('instance_mask', 'mask')]
+        keypoint = result[key_combine('body_keypoint', 'sub_dict')]
+
+        heatmaps = keypoint2heatmaps(keypoint, self.out_size)
 
         image_pil = Image.fromarray(image)
         mask_pil = Image.fromarray(mask)
+        heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
 
-        image_tensor = self.transform(image_pil)
-        mask_tensor = self.label_transform(mask_pil)
+        image_tensor = self.img_transform(image_pil)
+        mask_tensor = self.mask_transform(mask_pil)
+        heatmap_tensors = [self.heatmap_transfrom(
+            heatmap_pil) for heatmap_pil in heatmap_pils]
+        heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
 
-        return image_tensor, mask_tensor
+        return image_tensor, mask_tensor, heatmap_tensor
 
     def __len__(self):
         return len(self.results)
@@ -154,15 +222,16 @@ class InstanceCommonDataset(Dataset):
 def parse_args():
     args = {
         # "gpu_id": 2,
-        "auto_gpu_id": True,
+        # "auto_gpu_id": True,
         # "continue_train": True,
         "syn_train": False,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
-        "train_dataset_dir": "/data_ssd/ochuman",
-        "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
-        "checkpoint_dir": "/checkpoint/segment",
-        # "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        # "train_dataset_dir": "/data_ssd/ochuman",
+        # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
+        # "checkpoint_dir": "/checkpoint/segment",
+        "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
         # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
-        # "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+        "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
         # "checkpoint_filename": "union_best.pth",
         # "pretrained_path":"",
         "epoch": 30,
@@ -193,7 +262,7 @@ if __name__ == "__main__":
     )
 
     # 模型，优化器，损失
-    model = Segment()
+    model = Segment(3+17)
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     optimizer = optim.Adam(model.parameters())
@@ -226,9 +295,8 @@ if __name__ == "__main__":
         start_epoch = checkpoint["epoch"]
         model.load_state_dict(checkpoint["state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer"])
-            
 
-    if args.continue_train and os.path.exists(branch_best_path):
+    if hasattr(args, 'continue_train') and args.continue_train and os.path.exists(branch_best_path):
         print(f"loading checkpoint from {branch_best_path}")
         load_checkpoint(branch_best_path)
 
@@ -269,12 +337,13 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (inputs, labels) in enumerate(trainloader):
+        for i0, (inputs, labels, heatmaps) in enumerate(trainloader):
             model.train()
-            inputs, labels = inputs.to(device), labels.to(device)
+            inputs, labels, heatmaps = inputs.to(
+                device), labels.to(device), heatmaps.to(device)
             optimizer.zero_grad()
 
-            outputs = model.train_batch(inputs)
+            outputs = model.train_batch(inputs, heatmaps)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -307,10 +376,10 @@ if __name__ == "__main__":
                     train_batch_iou = tensors_mean_iou(outputs, labels)
 
                     val_ious = []
-                    for j0, (inputs2, labels2) in enumerate(valloader):
-                        inputs2, labels2 = inputs2.to(
-                            device), labels2.to(device)
-                        outputs2 = model.train_batch(inputs2)
+                    for j0, (inputs2, labels2, heatmaps2) in enumerate(valloader):
+                        inputs2, labels2, heatmaps2 = inputs2.to(
+                            device), labels2.to(device),heatmaps2.to(device)
+                        outputs2 = model.train_batch(inputs2, heatmaps2)
                         val_ious.append(tensors_mean_iou(outputs2, labels2))
 
                     val_iou = sum(val_ious)/len(val_ious)
@@ -391,9 +460,9 @@ if __name__ == "__main__":
                                 print('syn_train...')
                                 load_checkpoint(branch_best_path)
                                 epoch = start_epoch - 1
-                                break  
+                                break
 
-                    # 模型保存 
+                    # 模型保存
                     if val_iou > iou_max and val_iou > 0.7:
                         iou_max = val_iou
 
@@ -410,7 +479,6 @@ if __name__ == "__main__":
                             os.makedirs(args.checkpoint_dir)
 
                         torch.save(state, branch_best_path)
-                            
 
             if show_img_tag and show_img is not None:
                 cv.imshow(window_name, show_img)
