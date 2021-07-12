@@ -67,7 +67,7 @@ class InstanceCommonDataset(Dataset):
                 if not common_filter(obj, filter):
                     continue
 
-                obj[key_combine('instance_image', 'image_path')] = image_path
+                obj[key_combine('image', 'image_path')] = image_path
 
                 common_choice(obj, key_choices={
                               'instance_mask', 'instance_image', 'box'})
@@ -79,7 +79,7 @@ class InstanceCommonDataset(Dataset):
 
         common_transfer(result)
 
-        image = result[key_combine('instance_image', 'image')]
+        image = result[key_combine('image', 'image')]
         box = result[key_combine('box', 'box_xyxy')]
 
         # 增强
@@ -128,7 +128,6 @@ class InstanceCommonDataset(Dataset):
                                 (bottom, bottom), (left, left))),
                 # iaa.CropAndPad(((top-ah, top+ah), (right-aw, right+aw),
                 #                 (bottom-ah, bottom+ah), (left-aw, left+aw))),
-                iaa.Fliplr(0.5),
                 # sometimes(iaa.LinearContrast((0.75, 1.5))),
                 # sometimes(iaa.AdditiveGaussianNoise(
                 #     loc=0, scale=(0.0, 0.05*255), per_channel=0.5)),

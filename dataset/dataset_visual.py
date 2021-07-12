@@ -80,8 +80,8 @@ def draw_keypoint(image, keypoint: dict, labeled=False):
                  for key, color in zip(part_names, colors)}
 
     Rfactor = min(image.shape[:2])*0.1
-    Rpoint = int(min(10, max(Rfactor*10, 4)))
-    Rline = int(min(10, max(Rfactor*5, 2))*0.5)
+    Rpoint = int(min(5, max(Rfactor*10, 4)))
+    Rline = int(min(5, max(Rfactor*5, 2))*0.5)
 
     def get_x_y_status(key):
         partname_key_type = key_combine(key, 'sub_dict')

@@ -23,7 +23,7 @@ ANN_CHOICES = {'meta', 'object', 'image', 'mix',
                'class', 'segment_mask', 'class_mask'}
 
 OBJ_CHOICES = {'box', 'class', 'instance_mask',
-               'instance_image', 'body_keypoint'}
+               'body_keypoint'}
 
 BODY_PART_CHOICES = {"head", "neck", "right_shoulder", "right_elbow", "right_wrist",
                      "left_shoulder", "left_elbow", "left_wrist",
@@ -226,7 +226,8 @@ def common_transfer(result: dict, r: bool = False) -> None:
 
 def common_aug(result: dict, imgaug: iaa.Augmenter, shape: tuple = None, r: bool = False) -> None:
 
-    aug = imgaug if imgaug.deterministic else imgaug._to_deterministic() # 冻结随机因子，多次调用augment不变
+    # 冻结随机因子，多次调用augment不变
+    aug = imgaug if imgaug.deterministic else imgaug._to_deterministic()
 
     if shape is None:
         # 初始化shape，一些坐标需要参考系才有价值，比如绕图像中心旋转

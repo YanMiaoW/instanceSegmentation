@@ -6,6 +6,13 @@ import cv2 as cv
 import time
 from debug_function import *
 
+ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
+                    "left_shoulder", "left_elbow", "left_wrist",
+                    "right_hip", "right_knee", "right_ankle",
+                    "left_hip", "left_knee", "left_ankle",
+                    "head", "neck", 'right_ear', 'left_ear',
+                    'nose', 'right_eye', 'left_eye']
+
 
 def test1(dataset_dir):
 
@@ -38,12 +45,11 @@ def test1(dataset_dir):
             box = obj[key_combine('box', 'box_xyxy')]
             class_name = obj[key_combine('class', 'class')]
 
-            common_choice(obj, key_choices={
-                'instance_image', 'instance_mask', 'body_keypoint'})
+            common_choice(obj, key_choices={'instance_mask', 'body_keypoint'})
 
             common_transfer(obj)
 
-            obj[key_combine('instance_image', 'image')] = image
+            obj[key_combine('image', 'image')] = image
 
             # aug过程
 
@@ -56,41 +62,46 @@ def test1(dataset_dir):
             tx = int(iw / 2 - box_center_x)
             ty = int(ih / 2 - box_center_y)
 
-            common_aug(obj, iaa.Sequential([
+            aug = iaa.Sequential([
                 iaa.Affine(translate_px={"x": (tx, tx), "y": (ty, ty)}),
-                sometimes(
-                    iaa.Affine(rotate=(-25, 25)),
-                ),
-            ]), r=True)
+                # sometimes(
+                #     iaa.Affine(rotate=(-25, 25)),
+                # ),
+            ])
+
+            common_aug(obj, aug, r=True)
 
             instance_mask = obj[key_combine('instance_mask', 'mask')]
             instance_box = mask2box(instance_mask)
             if instance_box is None:
                 continue
             x1, y1, x2, y2 = instance_box
-            left = -x1
-            right = x2 - iw
-            top = -y1
-            bottom = y2 - ih
-            aw = int((x2-x1)*0.2)
-            ah = int((y2-y1)*0.2)
+            pad = 16
+            left = -x1 + pad
+            right = x2 - iw + pad
+            top = -y1 + pad
+            bottom = y2 - ih +pad
+            # aw = int((x2-x1)*0.2)
+            # ah = int((y2-y1)*0.2)
+            aw = 0
+            ah = 0
 
-            aug = iaa.Sequential([
+            aug2 = iaa.Sequential([
                 iaa.CropAndPad(((top-ah, top+ah), (right-aw, right+aw),
                                (bottom-ah, bottom+ah), (left-aw, left+aw))),
-                iaa.Fliplr(0.5),
-                sometimes(iaa.LinearContrast((0.75, 1.5))),
-                sometimes(iaa.AdditiveGaussianNoise(
-                    loc=0, scale=(0.0, 0.05*255), per_channel=0.5)),
-                sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
+                # iaa.Fliplr(0.5),
+                # sometimes(iaa.LinearContrast((0.75, 1.5))),
+                # sometimes(iaa.AdditiveGaussianNoise(
+                #     loc=0, scale=(0.0, 0.05*255), per_channel=0.5)),
+                # sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
             ])
 
-            common_aug(obj, aug, r=True)
+            common_aug(obj, aug2, r=True)
 
             # 数据集显示
 
             instance_mask = obj[key_combine('instance_mask', 'mask')]
-            instance_image = obj[key_combine('instance_image', 'image')]
+            instance_image = obj[key_combine('image', 'image')]
             instance_mix = instance_image.copy()
 
             draw_mask(instance_mix, instance_mask)
@@ -141,7 +152,6 @@ def show_dataset(dataset_dir):
         mask = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
 
         imshow(np.concatenate([image, mix, mask], axis=1), window_name)
-
 
 
 if __name__ == '__main__':
