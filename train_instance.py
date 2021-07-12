@@ -135,7 +135,7 @@ class InstanceCommonDataset(Dataset):
                 # sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
             ])
 
-        common_aug(result, aug, r=True)
+        # common_aug(result, aug, r=True)
 
         image = result[key_combine('instance_image', 'image')]
         mask = result[key_combine('instance_mask', 'mask')]

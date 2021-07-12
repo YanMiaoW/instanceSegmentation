@@ -167,10 +167,7 @@ def common_choice(result: dict, key_choices: set = None, type_choices: set = Non
 def common_filter(result: dict, yield_filter: Generator[bool, dict, bool], has_type: bool = False) -> bool:
     ''' yield_filter一定要有yield（生成器）， yield返回的都是true，common_filter才会返回true '''
     if has_type:
-        for b in yield_filter(result):
-            if not b:
-                return False
-        return True
+        return all(yield_filter(result))
     else:
         def remove_type(result: dict) -> None:
             no_type_result = {}
@@ -189,11 +186,7 @@ def common_filter(result: dict, yield_filter: Generator[bool, dict, bool], has_t
 
         no_type_result = remove_type(result)
 
-        for b in yield_filter(no_type_result):
-            if not b:
-                return False    
-        
-        return True
+        return all(yield_filter(no_type_result))
 
 
 def common_transfer(result: dict, r: bool = False) -> None:
