@@ -302,7 +302,7 @@ if __name__ == "__main__":
             model.load_state_dict(checkpoint["state_dict"])
             optimizer.load_state_dict(checkpoint["optimizer"])
         except:
-            pass
+            print('load fail')
 
     if hasattr(args, 'continue_train') and args.continue_train and os.path.exists(branch_best_path):
         print(f"loading checkpoint from {branch_best_path}")
@@ -386,7 +386,7 @@ if __name__ == "__main__":
                     val_ious = []
                     for j0, (inputs2, labels2, heatmaps2) in enumerate(valloader):
                         inputs2, labels2, heatmaps2 = inputs2.to(
-                            device), labels2.to(device),heatmaps2.to(device)
+                            device), labels2.to(device), heatmaps2.to(device)
                         outputs2 = model.train_batch(inputs2, heatmaps2)
                         val_ious.append(tensors_mean_iou(outputs2, labels2))
                         # todo
@@ -437,10 +437,11 @@ if __name__ == "__main__":
                         #     train_mask, cv.COLOR_GRAY2RGB)
                         # val_mask3 = cv.cvtColor(val_mask, cv.COLOR_GRAY2RGB)
                         # todo
-                        
-                        train_mask3 = cv.applyColorMap( train_mask, cv.COLORMAP_HOT)
+
+                        train_mask3 = cv.applyColorMap(
+                            train_mask, cv.COLORMAP_HOT)
                         val_mask3 = cv.applyColorMap(val_mask, cv.COLORMAP_HOT)
-                        
+
                         train_label_mask3 = cv.cvtColor(
                             train_label_mask, cv.COLOR_GRAY2RGB)
                         val_label_mask3 = cv.cvtColor(
@@ -468,18 +469,15 @@ if __name__ == "__main__":
 
                     # 模型更新
                     if os.path.exists(branch_best_path):
-                        try:
-                            checkpoint = torch.load(branch_best_path)
-                            if iou_max < checkpoint['best'] or epoch - start_epoch>10:
-                                print(f'update model from {branch_best_path}')
-                                iou_max = checkpoint['best']
-                                if hasattr(args, 'syn_train') and args.syn_train:
-                                    print('syn_train...')
-                                    load_checkpoint(branch_best_path)
-                                    epoch = start_epoch - 1
-                                    break
-                        except:
-                            print('syn fail.')
+                        checkpoint = torch.load(branch_best_path)
+                        if iou_max < checkpoint['best'] or epoch - start_epoch > 10:
+                            print(f'update model from {branch_best_path}')
+                            iou_max = checkpoint['best']
+                            if hasattr(args, 'syn_train') and args.syn_train:
+                                print('syn_train...')
+                                load_checkpoint(branch_best_path)
+                                epoch = start_epoch - 1
+                                break
 
                     # 模型保存
                     if val_iou > iou_max and val_iou > 0.7:
@@ -496,8 +494,10 @@ if __name__ == "__main__":
                         }
                         if not os.path.exists(args.checkpoint_dir):
                             os.makedirs(args.checkpoint_dir)
-
-                        torch.save(state, branch_best_path)
+                        try:
+                            torch.save(state, branch_best_path)
+                        except:
+                            print('save_fail')
 
             if show_img_tag and show_img is not None:
                 cv.imshow(window_name, show_img)
