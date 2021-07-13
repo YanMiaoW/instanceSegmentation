@@ -9,8 +9,7 @@ import cv2
 import numpy as np
 from debug_function import *
 
-# from net.common import Conv, Focus, SEModule, autopad, fuse_conv_and_bn, init_head_s4
-
+# torch.autograd.set_detect_anomaly(True)
 
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
@@ -56,30 +55,19 @@ class Bottleneck3x3(nn.Module):
     def __init__(self, inplanes, planes, pad=1, dilation=1):
         super(Bottleneck3x3, self).__init__()
         self.convs = nn.Sequential(
-            # nn.Conv2d(inplanes, planes, kernel_size=1),
-            # nn.BatchNorm2d(planes),
-            # nn.PReLU(planes),
             Conv(inplanes, planes, k=1, act=nn.PReLU(planes)),
-
-            # nn.Conv2d(planes, planes, kernel_size=3, padding=pad, dilation=dilation, groups=planes),
-            # nn.BatchNorm2d(planes),
-            # nn.PReLU(planes),
             Conv(planes, planes, k=3, p=pad, d=dilation,
                  g=planes, act=nn.PReLU(planes)),
-
-            # nn.Conv2d(planes, inplanes, kernel_size=1),
-            # nn.BatchNorm2d(inplanes),
             Conv(planes, inplanes, k=1, act=None),
         )
         self.prelu = nn.PReLU(inplanes)
 
     def forward(self, x):
-        residual = x
         out = self.convs(x)
-        out += residual
-        out = self.prelu(out)
+        x += out
+        x = self.prelu(x)
 
-        return out
+        return x
 
 
 class Bottleneck5x5(nn.Module):
@@ -118,25 +106,15 @@ class BottleneckDown2(nn.Module):
     def __init__(self, inplanes, planes, outplanes):
         super(BottleneckDown2, self).__init__()
         self.convs = nn.Sequential(
-            # nn.Conv2d(inplanes, planes, kernel_size=2, stride=2),
-            # nn.BatchNorm2d(planes),
-            # nn.PReLU(planes),
             Conv(inplanes, planes, k=2, s=2, p=0,
                  act=nn.PReLU(planes)),  # ==!!!!==
 
-            # nn.Conv2d(planes, planes, kernel_size=3, padding=1, stride=1, groups=planes),
-            # nn.BatchNorm2d(planes),
-            # nn.PReLU(planes),
             Conv(planes, planes, k=3, s=1, p=1,
                  g=planes, act=nn.PReLU(planes)),
 
-            # nn.Conv2d(planes, outplanes, kernel_size=1),
-            # nn.BatchNorm2d(outplanes),
             Conv(planes, outplanes, k=1, act=None),
         )
         self.convm = nn.Sequential(
-            # nn.Conv2d(inplanes, outplanes, kernel_size=1),
-            # nn.BatchNorm2d(outplanes)
             Conv(inplanes, outplanes, k=1, act=None),
         )
 
@@ -159,44 +137,26 @@ class BottleneckDim_Res(nn.Module):  # down dim
         self.usePrelu = usePrelu
         if self.usePrelu:
             self.convs = nn.Sequential(
-                # nn.Conv2d(inplanes, planes, kernel_size=1),
-                # nn.BatchNorm2d(planes),
-                # nn.PReLU(planes),
                 Conv(inplanes, planes, k=1, act=nn.PReLU(planes)),
 
-                # nn.Conv2d(planes, planes, kernel_size=3, padding=1, groups=planes),
-                # nn.BatchNorm2d(planes),
-                # nn.PReLU(planes),
                 Conv(planes, planes, k=3, p=1, g=planes, act=nn.PReLU(planes)),
 
-                # nn.Conv2d(planes, outplanes, kernel_size=1),
-                # nn.BatchNorm2d(outplanes),
                 Conv(planes, outplanes, k=1, act=None),
             )
         else:
             self.convs = nn.Sequential(
-                # nn.Conv2d(inplanes, planes, kernel_size=1),
-                # nn.BatchNorm2d(planes),
-                # nn.ReLU(inplace=True),
                 Conv(inplanes, planes, k=1, act=nn.PReLU(planes)),
 
-                # nn.Conv2d(planes, planes, kernel_size=3, padding=1, groups=planes),
-                # nn.BatchNorm2d(planes),
-                # nn.ReLU(inplace=True),
                 Conv(planes, planes, k=3, p=1, g=planes, act=nn.PReLU(planes)),
 
-                # nn.Conv2d(planes, outplanes, kernel_size=1),
-                # nn.BatchNorm2d(outplanes),
                 Conv(planes, outplanes, k=1, act=None),
             )
         self.resconv = nn.Sequential(
-            # nn.Conv2d(inplanes, outplanes, kernel_size=1),
-            # nn.BatchNorm2d(outplanes)
             Conv(inplanes, outplanes, k=1, act=None),
         )
 
         self.prelu = nn.PReLU(outplanes)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU(inplace=False)
 
     def forward(self, x):
         residual = x
@@ -236,13 +196,13 @@ class BottleneckDim(nn.Module):  # down dim
             self.convs = nn.Sequential(
                 # nn.Conv2d(inplanes, planes, kernel_size=1),
                 # nn.BatchNorm2d(planes),
-                # nn.ReLU(inplace=True),
-                Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=True)),
+                # nn.ReLU(inplace=False),
+                Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=False)),
 
                 # nn.Conv2d(planes, planes, kernel_size=3, padding=1, groups=planes),
                 # nn.BatchNorm2d(planes),
-                # nn.ReLU(inplace=True),
-                Conv(planes, planes, k=3, p=1, act=nn.ReLU(inplace=True)),
+                # nn.ReLU(inplace=False),
+                Conv(planes, planes, k=3, p=1, act=nn.ReLU(inplace=False)),
 
                 # nn.Conv2d(planes, outplanes, kernel_size=1),
                 # nn.BatchNorm2d(outplanes),
@@ -250,7 +210,7 @@ class BottleneckDim(nn.Module):  # down dim
             )
 
         self.prelu = nn.PReLU(outplanes)
-        self.relu = nn.ReLU(inplace=True)
+        self.relu = nn.ReLU(inplace=False)
 
     def forward(self, x):
         residual = x
@@ -270,13 +230,13 @@ class BottleneckUp(nn.Module):  # upsample
         self.convs = nn.Sequential(
             # nn.Conv2d(inplanes, planes, kernel_size=1),
             # nn.BatchNorm2d(planes),
-            # nn.ReLU(inplace=True),
-            Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=True)),
+            # nn.ReLU(inplace=False),
+            Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=False)),
 
             nn.ConvTranspose2d(planes, planes, kernel_size=4,
                                padding=1, stride=2),
             nn.BatchNorm2d(planes),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
 
             # nn.Conv2d(planes, outplanes, kernel_size=1),
             # nn.BatchNorm2d(outplanes),
@@ -291,7 +251,7 @@ class BottleneckUp(nn.Module):  # upsample
         residual = self.conv2(residual)
         residual = self.uppool(residual, mp_indices)
         out += residual
-        out = F.relu(out, inplace=True)
+        out = F.relu(out, inplace=False)
 
         return out
 
@@ -302,13 +262,13 @@ class BottleneckUp_Res(nn.Module):  # upsample
         self.convs = nn.Sequential(
             # nn.Conv2d(inplanes, planes, kernel_size=1),
             # nn.BatchNorm2d(planes),
-            # nn.ReLU(inplace=True),
-            Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=True)),
+            # nn.ReLU(inplace=False),
+            Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=False)),
 
             nn.ConvTranspose2d(planes, planes, kernel_size=4,
                                padding=1, stride=2),
             nn.BatchNorm2d(planes),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
 
             # nn.Conv2d(planes, outplanes, kernel_size=1),
             # nn.BatchNorm2d(outplanes),
@@ -333,24 +293,35 @@ class BottleneckUp_Res(nn.Module):  # upsample
         # print(residual.size()[1], mp_indices.size()[1])
         residual = self.uppool(torch.cat([residual, mp_indices], 1))
         out += residual
-        out = F.relu(out, inplace=True)
+        out = F.relu(out, inplace=False)
 
         return out
+    
+class BottleneckUp_Res_for_cat_diff_ch(BottleneckUp_Res):  # upsample
+    def __init__(self, inplanes, planes, outplanes, other_branch):
+        super(BottleneckUp_Res_for_cat_diff_ch, self).__init__(inplanes, planes, outplanes)
+        self.uppool = nn.Sequential(
+            nn.UpsamplingNearest2d(scale_factor=2),
+            nn.Conv2d(outplanes + other_branch, outplanes, 1, 1, 0)
+        )
+
 
 
 class Segment(nn.Module):
-    def __init__(self, input_channel=1, use_aux=False):
+    def __init__(self, input_channel, use_aux=False):
         super().__init__()
         self.export = False
         self.output_mid_features = False
-
         # # init section
         # self.init_Dim = 16
         # self.init_conv = Focus(3, self.init_Dim, k=3, s=1, act=nn.PReLU(self.init_Dim))
 
         # init section
-        self.init_Dim = 16+17
-        self.init_conv = init_head_s4(input_channel, 20, self.init_Dim)
+        # self.init_Dim = 16+input_channel
+        # self.init_conv = init_head_s4(input_channel, 15, self.init_Dim)
+        
+        self.init_Dim = 16
+        self.init_conv = init_head_s4(3, 8, self.init_Dim)
 
         # section 1
         self.bottle1_downDim = 16
@@ -420,8 +391,10 @@ class Segment(nn.Module):
             self.bottle1_Dim, 16, self.bottle1_Dim, usePrelu=False)
 
         # section 5
+        # self.bottle5_1up = BottleneckUp_Res_for_cat_diff_ch(
+        #     self.bottle1_Dim, 4, self.bottle1_downDim, self.init_Dim)
         self.bottle5_1up = BottleneckUp_Res(
-            self.bottle1_Dim, 4, self.bottle1_downDim)
+        self.bottle1_Dim, 4, self.bottle1_downDim)
         self.bottle5_2 = BottleneckDim(
             self.bottle1_downDim, 4, self.bottle1_downDim, usePrelu=False)
 
@@ -475,7 +448,7 @@ class Segment(nn.Module):
         # init_mp = F.max_pool2d(x, kernel_size=2, stride=2)
         # init_down = torch.cat((init_out, init_mp), 1)
 
-        x = torch.cat([x, heatmaps], dim=1)
+        # x = torch.cat([x, heatmaps], dim=1)
 
         init_down = self.init_conv(x)
         # pdb.set_trace()
@@ -505,7 +478,7 @@ class Segment(nn.Module):
         bottle4_3 = self.bottle4_3(bottle4_2)
 
         # section5
-        bottle5_1 = self.bottle5_1up(bottle4_3+17, bottle1_indices)
+        bottle5_1 = self.bottle5_1up(bottle4_3, bottle1_indices)
         bottle5_2 = self.bottle5_2(bottle5_1)
 
         # section6
@@ -553,26 +526,9 @@ class Segment(nn.Module):
 
 
 if __name__ == "__main__":
-    # from time import clock
-    #
-    # foreward_time = .0
-    #
-    # for i in range(1000):
-    #     images = Variable(torch.randn(1, 3, 256, 256))
-    #     d = Enet_V1_accuracy_1_3(2)
-    #     # print d
-    #     print "do forward..."
-    #     start_t = clock()
-    #     outputs = d(images)
-    #     foreward_time += clock() - start_t
-    #     print (outputs.size())  # (10, 100)
-    #
-    # print ('run_time:',foreward_time)
 
     images = Variable(torch.randn(1, 3, 480, 480))
-    d = Segment(1)
+    d = Segment(3+17)
     print(d)
-    # from thop import profile
-    output, _ = d(images)
+    output = d(images, torch.rand((1, 17, 480, 480)))
     print(output.size())
-    # print(profile(d, (images,)))

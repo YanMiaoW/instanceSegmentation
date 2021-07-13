@@ -6,17 +6,19 @@ from inspect import isfunction
 
 
 class Module(nn.Module):
+
+    func2class ={}
+    
     def __init__(self, *l, **d):
         super().__init__()
 
         self.init(*l, **d)
 
-        # [nn.module, ...] -> nn.Sequential(nn.module, ...)
         for key, value in self.__dict__.copy().items():
-            if isinstance(value, list) and "_" not in key:
+            if isinstance(value, list) and "_" not in key[:1]:
                 seq = self._list2seq(value)
                 setattr(self, key, seq)
-
+                
     def _list2seq(self, s0):
 
         s = []
@@ -32,21 +34,25 @@ class Module(nn.Module):
 
             elif isfunction(i):
                 # 函数 包装成 nn.module对象
-                _funci = i  # 用i会和全局的i冲突
-                M = type(i.__name__, (nn.Module,), {
+
+                if i.__name__ not in Module.func2class:
+                    _funci = i  # 用i会和全局的i冲突
+                    M = type(i.__name__, (nn.Module,), {
                          "forward": lambda self, x: _funci(x)})
-                s.append(M())
+                    Module.func2class[i.__name__]= M
+
+                s.append(Module.func2class[i.__name__]())
 
             else:
                 assert False, "not support " + str(type(i))
 
         d = {}
         netCount = {}
-        for i, n in enumerate(s):
-            class_name = (n.__class__.__name__).lower()
+        for i, net in enumerate(s):
+            class_name = (net.__class__.__name__).lower()
             if not class_name in netCount:
                 netCount[class_name] = 0
-            d[f'{class_name}{netCount[class_name]}'] = n
+            d[f'{class_name}{netCount[class_name]}'] = net
             netCount[class_name] += 1
 
         return nn.Sequential(OrderedDict(d))

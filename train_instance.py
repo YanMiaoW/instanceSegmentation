@@ -224,7 +224,7 @@ def parse_args():
         # "gpu_id": 2,
         "auto_gpu_id": True,
         # "continue_train": True,
-        "syn_train": False,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
+        # "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
         "train_dataset_dir": "/data_ssd/ochuman",
         "val_dataset_dir": "/data_ssd/ochuman",
         # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     )
 
     # 模型，优化器，损失
-    model = Segment(3+17)
+    model = Segment(3)
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     optimizer = optim.Adam(model.parameters())
