@@ -243,7 +243,7 @@ def parse_args():
         "show_iter": 20,
         "val_iter": 120,
         "batch_size": 8,
-        "cpu_num": 4,
+        "cpu_num": 2,
     }
 
     return dict2class(args)
@@ -433,14 +433,14 @@ if __name__ == "__main__":
                         val_mix = val_img.copy()
                         draw_mask(val_mix, val_mask)
 
-                        # train_mask3 = cv.cvtColor(
-                        #     train_mask, cv.COLOR_GRAY2RGB)
-                        # val_mask3 = cv.cvtColor(val_mask, cv.COLOR_GRAY2RGB)
-                        # todo
-
                         train_mask3 = cv.applyColorMap(
                             train_mask, cv.COLORMAP_HOT)
                         val_mask3 = cv.applyColorMap(val_mask, cv.COLORMAP_HOT)
+
+                        # 蓝图变红图
+                        # train_mask3 = cv.cvtColor(
+                        #     train_mask3, cv.COLOR_BGR2RGB)
+                        # val_mask3 = cv.cvtColor(val_mask3, cv.COLOR_BGR2RGB)
 
                         train_label_mask3 = cv.cvtColor(
                             train_label_mask, cv.COLOR_GRAY2RGB)
