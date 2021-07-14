@@ -269,14 +269,14 @@ def parse_args():
         "auto_gpu_id": True,
         "continue_train": True,
         "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
-        # "train_dataset_dir": "/data_ssd/ochuman",
-        # "val_dataset_dir": "/data_ssd/ochuman",
+        "train_dataset_dir": "/data_ssd/ochuman",
+        "val_dataset_dir": "/data_ssd/ochuman",
         # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
-        # "checkpoint_dir": "/checkpoint/segment",
-        "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-        "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        "checkpoint_dir": "/checkpoint/segment",
+        # "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
         # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
-        "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+        # "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
         # "checkpoint_filename": "union_best.pth",
         # "pretrained_path":"",
         "epoch": 30,
@@ -307,7 +307,7 @@ if __name__ == "__main__":
     )
 
     # 模型，优化器，损失
-    model = Segment(3+len(CONNECTION_PARTS))
+    model = Segment(3 + len(CONNECTION_PARTS) * 2)
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     optimizer = optim.Adam(model.parameters())
