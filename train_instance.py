@@ -24,46 +24,86 @@ ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
                     "left_shoulder", "left_elbow", "left_wrist",
                     "right_hip", "right_knee", "right_ankle",
                     "left_hip", "left_knee", "left_ankle",
-                    'right_ear', 'left_ear',
-                    'nose', 'right_eye', 'left_eye']
+                    'right_ear', 'right_eye',
+                    'left_eye', 'left_ear',
+                    'nose', ]
+
+CONNECTION_PARTS = [
+    ['right_shoulder', 'right_elbow'],
+    ['right_elbow', 'right_wrist'],
+    ['right_hip', 'right_knee'],
+    ['right_knee', 'right_ankle'],
+    ['right_ear', 'nose'],
+    ['right_eye', 'nose'],
+
+    ['left_shoulder', 'left_elbow'],
+    ['left_elbow', 'left_wrist'],
+    ['left_hip', 'left_knee'],
+    ['left_knee', 'left_ankle'],
+    ['left_ear', 'nose'],
+    ['left_eye', 'nose'],
+
+    ['right_ear', 'left_eye'],
+]
 
 
-def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
+def connection2pafs(keypoint, shape, sigma=10):
 
-    r = math.sqrt(math.log(threshold)*(-sigma**2))
+    pafs = []
 
-    heatmaps = []
+    for part1, part2 in CONNECTION_PARTS:
 
-    for key in ORDER_PART_NAMES:
+        pafx = np.zeros(shape, dtype=np.float32)
+        pafy = np.zeros(shape, dtype=np.float32)
 
-        heatmap = np.zeros(shape, dtype=np.float32)
+        part1 = key_combine(part1, 'sub_dict')
+        part2 = key_combine(part2, 'sub_dict')
+        status = key_combine('status', 'keypoint_status')
+        point = key_combine('point', 'point_xy')
 
-        key_type = key_combine(key, 'sub_dict')
+        if part1 in keypoint and\
+                keypoint[part1][status] == 'vis' and\
+                part2 in keypoint and\
+                keypoint[part2][status] == 'vis':
 
-        if key_type in keypoint and\
-            keypoint[key_type][
-                key_combine('status', 'keypoint_status')] == 'vis':
+            x1, y1 = keypoint[part1][point]
+            x2, y2 = keypoint[part2][point]
 
-            x, y = keypoint[key_type][key_combine('point', 'point_xy')]
+            v0 = np.array([x2-x1, y2-y1])
+            v0_norm = np.linalg.norm(v0)
+
+            if v0_norm == 0:
+                continue
+
             h, w = shape
+            x_min = max(int(round(min(x1, x2) - sigma)), 0)
+            x_max = min(int(round(max(x1, x2) + sigma)), w-1)
+            y_min = max(int(round(min(y1, y2) - sigma)), 0)
+            y_max = min(int(round(max(y1, y2) + sigma)), h-1)
 
-            x_min = max(0, int(x - r))
-            x_max = min(w-1, int(x+r+1))
-            y_min = max(0, int(y - r))
-            y_max = min(h-1, int(y+r+1))
+            xs, ys = np.meshgrid(np.arange(x_min, x_max),
+                                 np.arange(y_min, y_max))
 
-            xs = np.arange(x_min, x_max)
-            ys = np.arange(y_min, y_max)[:, np.newaxis]
+            vs = np.stack((xs.flatten() - x1, ys.flatten() - y1), axis=1)
 
-            e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
+            # |B|cos = |A||B|cos / |A|
+            l = np.dot(vs, v0) / v0_norm
+            c1 = (l >= 0) & (l <= v0_norm)
 
-            idxs = np.where(e_table > threshold)
+            # |B|sin = |A||B|sin / |A|
+            c2 = abs(np.cross(vs, v0) / v0_norm) <= sigma
 
-            heatmap[y_min:y_max, x_min:x_max][idxs] = e_table[idxs]
+            idxs = c1 & c2
 
-        heatmaps.append(heatmap)
+            idxs = idxs.reshape(xs.shape)
 
-    return heatmaps
+            pafx[y_min:y_max, x_min:x_max][idxs] = v0[0] / v0_norm
+            pafy[y_min:y_max, x_min:x_max][idxs] = v0[1] / v0_norm
+
+        pafs.append(pafx)
+        pafs.append(pafy)
+
+    return pafs
 
 
 class InstanceCommonDataset(Dataset):
@@ -86,7 +126,7 @@ class InstanceCommonDataset(Dataset):
             [transforms.ToTensor()]
         )
 
-        self.heatmap_transfrom = transforms.Compose(
+        self.paf_transfrom = transforms.Compose(
             [
                 transforms.ToTensor(),
             ]
@@ -130,7 +170,7 @@ class InstanceCommonDataset(Dataset):
 
                 self.results.append(obj)
 
-        # self.__getitem__(10)
+        self.__getitem__(0)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -205,19 +245,19 @@ class InstanceCommonDataset(Dataset):
         mask = result[key_combine('instance_mask', 'mask')]
         keypoint = result[key_combine('body_keypoint', 'sub_dict')]
 
-        heatmaps = keypoint2heatmaps(keypoint, self.out_size)
+        pafs = connection2pafs(keypoint, self.out_size)
 
         image_pil = Image.fromarray(image)
         mask_pil = Image.fromarray(mask)
-        heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
+        paf_pils = [Image.fromarray(paf) for paf in pafs]
 
         image_tensor = self.img_transform(image)
         mask_tensor = self.mask_transform(mask)
-        heatmap_tensors = [self.heatmap_transfrom(
-            heatmap_pil) for heatmap_pil in heatmaps]
-        heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
+        paf_pils = [self.paf_transfrom(
+            paf_pil) for paf_pil in pafs]
+        paf_tensor = torch.cat(paf_pils, dim=0)
 
-        return image_tensor, mask_tensor, heatmap_tensor
+        return image_tensor, mask_tensor, paf_tensor
 
     def __len__(self):
         return len(self.results)
@@ -229,14 +269,14 @@ def parse_args():
         "auto_gpu_id": True,
         "continue_train": True,
         "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
-        "train_dataset_dir": "/data_ssd/ochuman",
-        "val_dataset_dir": "/data_ssd/ochuman",
+        # "train_dataset_dir": "/data_ssd/ochuman",
+        # "val_dataset_dir": "/data_ssd/ochuman",
         # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
-        "checkpoint_dir": "/checkpoint/segment",
-        # "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-        # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        # "checkpoint_dir": "/checkpoint/segment",
+        "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+        "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
         # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
-        # "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+        "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
         # "checkpoint_filename": "union_best.pth",
         # "pretrained_path":"",
         "epoch": 30,
@@ -267,7 +307,7 @@ if __name__ == "__main__":
     )
 
     # 模型，优化器，损失
-    model = Segment(3+17)
+    model = Segment(3+len(CONNECTION_PARTS))
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     optimizer = optim.Adam(model.parameters())
@@ -345,13 +385,13 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (inputs, labels, heatmaps) in enumerate(trainloader):
+        for i0, (inputs, labels, pafs) in enumerate(trainloader):
             model.train()
-            inputs, labels, heatmaps = inputs.to(
-                device), labels.to(device), heatmaps.to(device)
+            inputs, labels, pafs = inputs.to(
+                device), labels.to(device), pafs.to(device)
             optimizer.zero_grad()
 
-            outputs = model.train_batch(inputs, heatmaps)
+            outputs = model.train_batch(inputs, pafs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -384,10 +424,10 @@ if __name__ == "__main__":
                     train_batch_iou = tensors_mean_iou(outputs, labels)
 
                     val_ious = []
-                    for j0, (inputs2, labels2, heatmaps2) in enumerate(valloader):
-                        inputs2, labels2, heatmaps2 = inputs2.to(
-                            device), labels2.to(device), heatmaps2.to(device)
-                        outputs2 = model.train_batch(inputs2, heatmaps2)
+                    for j0, (inputs2, labels2, pafs2) in enumerate(valloader):
+                        inputs2, labels2, pafs2 = inputs2.to(
+                            device), labels2.to(device), pafs2.to(device)
+                        outputs2 = model.train_batch(inputs2, pafs2)
                         val_ious.append(tensors_mean_iou(outputs2, labels2))
                         # todo
                         break
@@ -459,6 +499,8 @@ if __name__ == "__main__":
                         show_img = cv.resize(show_img, (0, 0), fx=0.5, fy=0.5)
                         show_img = cv.cvtColor(show_img, cv.COLOR_RGB2BGR)
 
+                        # TODO 这里重复了，将来封装成统一预测过程
+
                     # 模型重启
                     if iou_max-val_iou > 0.3:
                         print(
@@ -478,6 +520,7 @@ if __name__ == "__main__":
                                 load_checkpoint(branch_best_path)
                                 epoch = start_epoch - 1
                                 break
+                            # TODO 模型保存和读取过程，gpu的加载相关没有做好，容易爆内存， 多个文件同时读写可能冲突
 
                     # 模型保存
                     if val_iou > iou_max and val_iou > 0.7:

@@ -549,6 +549,6 @@ if __name__ == "__main__":
     loss = criterion(o, label)
     loss.backward()
 
-    m = modshow(m, (17+3, 480, 480))
+    # m = modshow(m, (17+3, 480, 480))
 
     check(o)
