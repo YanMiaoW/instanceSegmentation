@@ -47,6 +47,44 @@ CONNECTION_PARTS = [
 ]
 
 
+def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
+
+    r = math.sqrt(math.log(threshold)*(-sigma**2))
+
+    heatmaps = []
+
+    for key in ORDER_PART_NAMES:
+
+        heatmap = np.zeros(shape, dtype=np.float32)
+
+        key_type = key_combine(key, 'sub_dict')
+
+        if key_type in keypoint and\
+            keypoint[key_type][
+                key_combine('status', 'keypoint_status')] == 'vis':
+
+            x, y = keypoint[key_type][key_combine('point', 'point_xy')]
+            h, w = shape
+
+            x_min = max(0, int(x - r))
+            x_max = min(w-1, int(x+r+1))
+            y_min = max(0, int(y - r))
+            y_max = min(h-1, int(y+r+1))
+
+            xs = np.arange(x_min, x_max)
+            ys = np.arange(y_min, y_max)[:, np.newaxis]
+
+            e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
+
+            idxs = np.where(e_table > threshold)
+
+            heatmap[y_min:y_max, x_min:x_max][idxs] = e_table[idxs]
+
+        heatmaps.append(heatmap)
+
+    return heatmaps
+
+
 def connection2pafs(keypoint, shape, sigma=10):
 
     pafs = []
