@@ -164,6 +164,12 @@ class InstanceCommonDataset(Dataset):
             [transforms.ToTensor()]
         )
 
+        self.heatmap_transfrom = transforms.Compose(
+            [
+                transforms.ToTensor(),
+            ]
+        )
+
         self.paf_transfrom = transforms.Compose(
             [
                 transforms.ToTensor(),
@@ -283,19 +289,24 @@ class InstanceCommonDataset(Dataset):
         mask = result[key_combine('instance_mask', 'mask')]
         keypoint = result[key_combine('body_keypoint', 'sub_dict')]
 
+        heatmaps = keypoint2heatmaps(keypoint, self.out_size)
         pafs = connection2pafs(keypoint, self.out_size)
 
         image_pil = Image.fromarray(image)
         mask_pil = Image.fromarray(mask)
+        heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
         paf_pils = [Image.fromarray(paf) for paf in pafs]
 
         image_tensor = self.img_transform(image)
         mask_tensor = self.mask_transform(mask)
+        heatmap_tensors = [self.heatmap_transfrom(
+            heatmap_pil) for heatmap_pil in heatmaps]
+        heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
         paf_pils = [self.paf_transfrom(
             paf_pil) for paf_pil in pafs]
         paf_tensor = torch.cat(paf_pils, dim=0)
 
-        return image_tensor, mask_tensor, paf_tensor
+        return image_tensor, mask_tensor, heatmap_tensor, paf_tensor
 
     def __len__(self):
         return len(self.results)
@@ -345,7 +356,7 @@ if __name__ == "__main__":
     )
 
     # 模型，优化器，损失
-    model = Segment(3+len(CONNECTION_PARTS))
+    model = Segment(3+len(CONNECTION_PARTS)+len(ORDER_PART_NAMES))
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     optimizer = optim.Adam(model.parameters())
@@ -423,13 +434,13 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (inputs, labels, pafs) in enumerate(trainloader):
+        for i0, (inputs, labels, heatmaps, pafs) in enumerate(trainloader):
             model.train()
-            inputs, labels, pafs = inputs.to(
-                device), labels.to(device), pafs.to(device)
+            inputs, labels, heatmaps, pafs = inputs.to(
+                device), labels.to(device),  heatmaps.to(device), pafs.to(device)
             optimizer.zero_grad()
 
-            outputs = model.train_batch(inputs, pafs)
+            outputs = model.train_batch(inputs, heatmaps, pafs)
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
@@ -462,11 +473,12 @@ if __name__ == "__main__":
                     train_batch_iou = tensors_mean_iou(outputs, labels)
 
                     val_ious = []
-                    for j0, (inputs2, labels2, pafs2) in enumerate(valloader):
-                        inputs2, labels2, pafs2 = inputs2.to(
-                            device), labels2.to(device), pafs2.to(device)
+                    for j0, (inputs2, labels2, heatmaps2, pafs2) in enumerate(valloader):
+                        inputs2, labels2, heatmaps2, pafs2 = inputs2.to(
+                            device), labels2.to(device),  heatmaps2.to(device), pafs2.to(device)
                         outputs2 = model.train_batch(inputs2, pafs2)
-                        val_ious.append(tensors_mean_iou(outputs2, labels2))
+                        val_ious.append(tensors_mean_iou(
+                            outputs2, heatmaps2, labels2))
                         # todo
                         break
 

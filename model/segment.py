@@ -528,8 +528,8 @@ class Segment(nn.Module):
             # mask_out = Variable(softmax_output.data.max(1)[1])  # max(1)[0] are max values, max(1)[1] are idxs.
             return softmax_output[:, :1], [output5_1[:, :1], output4_1[:, :1], output3_1[:, :1]]
 
-    def train_batch(self, x, heatmaps):
-        inp = torch.cat([x, heatmaps], dim=1)
+    def train_batch(self, x, heatmaps, pafs):
+        inp = torch.cat([x, heatmaps,pafs], dim=1)
         out = self.forward(inp)
         return torch.sigmoid(out)
 
