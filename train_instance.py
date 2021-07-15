@@ -388,7 +388,7 @@ if __name__ == "__main__":
     show_img_tag = True
 
     if show_img_tag:
-        window_name = f"{branch_name}   {device}    img | label | mix | mask"
+        window_name = f"{branch_name}   {device}    img | label | heatmap | mix | mask"
         show_img = None
 
     print("training...")
