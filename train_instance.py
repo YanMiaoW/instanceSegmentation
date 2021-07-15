@@ -261,9 +261,9 @@ class InstanceCommonDataset(Dataset):
 
         pafs, paf_show = connection2pafs(keypoint, self.out_size)
 
-        image_pil = Image.fromarray(image)
-        mask_pil = Image.fromarray(mask)
-        paf_pils = [Image.fromarray(paf) for paf in pafs]
+        # image_pil = Image.fromarray(image)
+        # mask_pil = Image.fromarray(mask)
+        # paf_pils = [Image.fromarray(paf) for paf in pafs]
 
         image_tensor = self.img_transform(image)
         mask_tensor = self.mask_transform(mask)
@@ -293,6 +293,7 @@ def collate_fn(batch):
 
 
 def parse_args():
+
     if get_user_hostname() == YANMIAO_MACPRO_NAME:
         args = {
             # "gpu_id": 2,
@@ -356,7 +357,6 @@ if __name__ == "__main__":
     )
 
     # 模型，优化器，损失
-
     model = Segment(3 + len(CONNECTION_PARTS) * 2)
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
