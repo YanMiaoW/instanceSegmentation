@@ -14,10 +14,12 @@ import math
 from imgaug import augmenters as iaa
 import imgaug as ia
 
-from dataset.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
-from dataset.dataset_visual import mask2box, draw_mask
-from common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, mask_iou
-from debug_function import *
+from ymtools.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
+from ymtools.dataset_visual import mask2box, draw_mask
+from ymtools.common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, get_user_hostname, mean
+from ymtools.eval_function import mask_iou
+from ymtools.debug_function import *
+
 from model.segment import Segment
 
 ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
@@ -47,13 +49,20 @@ CONNECTION_PARTS = [
 ]
 
 
+def get_color(i, length):
+    v = int((255 / length / 2) * (2 * i + 1))
+    return cv.applyColorMap(np.array([[v]], dtype=np.uint8), cv.COLORMAP_TURBO)[0][0]
+
+
 def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
 
     r = math.sqrt(math.log(threshold)*(-sigma**2))
 
     heatmaps = []
 
-    for key in ORDER_PART_NAMES:
+    heatmap_show = np.zeros((*shape, 3), dtype=np.uint8)
+
+    for i0, key in enumerate(ORDER_PART_NAMES):
 
         heatmap = np.zeros(shape, dtype=np.float32)
 
@@ -66,24 +75,34 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
             x, y = keypoint[key_type][key_combine('point', 'point_xy')]
             h, w = shape
 
-            x_min = max(0, int(x - r))
-            x_max = min(w-1, int(x+r+1))
-            y_min = max(0, int(y - r))
-            y_max = min(h-1, int(y+r+1))
+            if x > 0 and x < w and y > 0 and y < h:
 
-            xs = np.arange(x_min, x_max)
-            ys = np.arange(y_min, y_max)[:, np.newaxis]
+                x_min = max(0, int(x - r))
+                x_max = min(w-1, int(x+r+1))
+                y_min = max(0, int(y - r))
+                y_max = min(h-1, int(y+r+1))
 
-            e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
+                xs = np.arange(x_min, x_max)
+                ys = np.arange(y_min, y_max)[:, np.newaxis]
 
-            idxs = np.where(e_table > threshold)
+                e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
 
-            heatmap[y_min:y_max, x_min:x_max][idxs] = e_table[idxs]
+                idxs = np.where(e_table > threshold)
+
+                region = heatmap[y_min:y_max, x_min:x_max]
+                region[idxs] = e_table[idxs]
+
+                show_region = heatmap_show[y_min:y_max, x_min:x_max]
+                color_region = np.zeros((*region.shape, 3), np.float32)
+                color_region[:] = get_color(i0, len(ORDER_PART_NAMES))
+                color_region = (e_table[:, :, np.newaxis]
+                                * color_region).astype(np.uint8)
+                show_region[:] = np.max(
+                    np.stack((show_region, color_region)), axis=0)
 
         heatmaps.append(heatmap)
 
-    return heatmaps
-
+    return heatmaps, heatmap_show
 
 def connection2pafs(keypoint, shape, sigma=10):
 
@@ -178,8 +197,6 @@ class InstanceCommonDataset(Dataset):
 
         self.results = []
 
-        print('load common dataset from ' + dataset_dir)
-
         for ann in common_ann_loader(dataset_dir):
 
             common_choice(ann, key_choices={'image', 'object'})
@@ -214,7 +231,7 @@ class InstanceCommonDataset(Dataset):
 
                 self.results.append(obj)
 
-        self.__getitem__(0)
+        self.__getitem__(248)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -289,51 +306,82 @@ class InstanceCommonDataset(Dataset):
         mask = result[key_combine('instance_mask', 'mask')]
         keypoint = result[key_combine('body_keypoint', 'sub_dict')]
 
-        heatmaps = keypoint2heatmaps(keypoint, self.out_size)
+        heatmaps, heatmap_show = keypoint2heatmaps(keypoint, self.out_size)
         pafs = connection2pafs(keypoint, self.out_size)
 
-        image_pil = Image.fromarray(image)
-        mask_pil = Image.fromarray(mask)
-        heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
-        paf_pils = [Image.fromarray(paf) for paf in pafs]
+        # image_pil = Image.fromarray(image)
+        # mask_pil = Image.fromarray(mask)
+        # heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
 
         image_tensor = self.img_transform(image)
         mask_tensor = self.mask_transform(mask)
         heatmap_tensors = [self.heatmap_transfrom(
-            heatmap_pil) for heatmap_pil in heatmaps]
+            heatmap) for heatmap in heatmaps]
         heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
         paf_pils = [self.paf_transfrom(
             paf_pil) for paf_pil in pafs]
         paf_tensor = torch.cat(paf_pils, dim=0)
 
-        return image_tensor, mask_tensor, heatmap_tensor, paf_tensor
+        out = {}
+        out['image'] = image
+        out['mask'] = mask
+        out['heatmapShow'] = heatmap_show
+
+        return image_tensor, mask_tensor, heatmap_tensor, paf_tensor, out
 
     def __len__(self):
         return len(self.results)
 
 
+def collate_fn(batch):
+    def deal(samples: list):
+        if isinstance(samples[0], torch.Tensor):
+            return torch.stack(samples, axis=0)
+        else:
+            return samples
+
+    return [deal(list(samples)) for samples in zip(*batch)]
+
+
 def parse_args():
-    args = {
-        # "gpu_id": 2,
-        "auto_gpu_id": True,
-        "continue_train": True,
-        "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
-        "train_dataset_dir": "/data_ssd/ochuman",
-        "val_dataset_dir": "/data_ssd/ochuman",
-        # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
-        "checkpoint_dir": "/checkpoint/segment",
-        # "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-        # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-        # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
-        # "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
-        # "checkpoint_filename": "union_best.pth",
-        # "pretrained_path":"",
-        "epoch": 30,
-        "show_iter": 20,
-        "val_iter": 120,
-        "batch_size": 8,
-        "cpu_num": 2,
-    }
+    
+    if get_user_hostname() == YANMIAO_MACPRO_NAME:
+        args = {
+            # "gpu_id": 2,
+            # "auto_gpu_id": True,
+            "continue_train": True,
+            "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
+            "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+            "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+            # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
+            "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+            # "checkpoint_save_path": "",
+            # "pretrained_path":"",
+            "epoch": 30,
+            "show_iter": 20,
+            "val_iter": 120,
+            "batch_size": 8,
+            "cpu_num": 2,
+        }
+
+    elif get_user_hostname() == ROOT_201_NAME:
+        args = {
+            # "gpu_id": 2,
+            "auto_gpu_id": True,
+            "continue_train": True,
+            "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
+            "train_dataset_dir": "/data_ssd/ochuman",
+            "val_dataset_dir": "/data_ssd/ochuman",
+            # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
+            "checkpoint_dir": "/checkpoint/segment",
+            # "checkpoint_save_path": "",
+            # "pretrained_path":"",
+            "epoch": 30,
+            "show_iter": 20,
+            "val_iter": 120,
+            "batch_size": 8,
+            "cpu_num": 2,
+        }
 
     return dict2class(args)
 
@@ -343,16 +391,20 @@ if __name__ == "__main__":
     args = parse_args()
 
     # 数据导入
+    print('load train dataset from ' + args.train_dataset_dir)
+
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
     trainloader = DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num
+        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn
     )
+
+    print('load val dataset from ' + args.train_dataset_dir)
 
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
     valloader = DataLoader(
-        valset, batch_size=args.batch_size, shuffle=True, num_workers=1
+        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
     )
 
     # 模型，优化器，损失
@@ -372,9 +424,8 @@ if __name__ == "__main__":
 
     print(f'branch name: {branch_name}')
 
-    if hasattr(args, 'checkpoint_filename'):
-        branch_best_path = os.path.join(
-            args.checkpoint_dir, args.checkpoint_filename)
+    if hasattr(args, 'checkpoint_save_path'):
+        branch_best_path = args.checkpoint_save_path
     else:
         branch_best_path = os.path.join(
             args.checkpoint_dir, f'{branch_name}_best.pth')
@@ -424,7 +475,7 @@ if __name__ == "__main__":
     show_img_tag = True
 
     if show_img_tag:
-        window_name = f"{branch_name}   {device}    img | label | mix | mask"
+        window_name = f"{branch_name}   {device}    img | label | heatmap | mix | mask"
         show_img = None
 
     print("training...")
@@ -434,14 +485,15 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (inputs, labels, heatmaps, pafs) in enumerate(trainloader):
+        for i0, (image_ts, mask_ts, heatmap_ts, results) in enumerate(trainloader):
             model.train()
-            inputs, labels, heatmaps, pafs = inputs.to(
-                device), labels.to(device),  heatmaps.to(device), pafs.to(device)
+            image_ts, mask_ts = image_ts.to(device), mask_ts.to(device)
+            heatmap_ts = heatmap_ts.to(device)
+
             optimizer.zero_grad()
 
-            outputs = model.train_batch(inputs, heatmaps, pafs)
-            loss = criterion(outputs, labels)
+            outmask_ts = model.train_batch(image_ts, heatmap_ts)
+            loss = criterion(outmask_ts, mask_ts)
             loss.backward()
             optimizer.step()
 
@@ -461,31 +513,31 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     model.eval()
 
-                    # 打印iou
-                    def tensors_mean_iou(outputs, labels):
-                        ious = []
-                        for output, label in zip(outputs, labels):
-                            output = output[0].cpu().numpy()*255
-                            label = label[0].cpu().numpy()*255
-                            ious.append(mask_iou(output, label))
-                        return sum(ious)/len(ious)
+                    def tensor2mask(tensor):
+                        return (tensor[0]*255).cpu().detach().numpy().astype(np.uint8)
 
-                    train_batch_iou = tensors_mean_iou(outputs, labels)
+                    # 打印iou
+                    def tensors_mean_iou(outmask_ts, mask_ts):
+                        return mean(mask_iou(tensor2mask(outmask_t), tensor2mask(mask_t)) for outmask_t, mask_t in zip(outmask_ts, mask_ts))
+
+                    train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
 
                     val_ious = []
-                    for j0, (inputs2, labels2, heatmaps2, pafs2) in enumerate(valloader):
-                        inputs2, labels2, heatmaps2, pafs2 = inputs2.to(
-                            device), labels2.to(device),  heatmaps2.to(device), pafs2.to(device)
-                        outputs2 = model.train_batch(inputs2, heatmaps2, pafs2)
+                    for j0, (vimage_ts, vmask_ts, vheatmap_ts, vresults) in enumerate(valloader):
+                        vimage_ts, vmask_ts = vimage_ts.to(
+                            device), vmask_ts.to(device)
+                        vheatmap_ts = vheatmap_ts.to(device)
+                        voutmask_ts = model.train_batch(vimage_ts, vheatmap_ts)
                         val_ious.append(tensors_mean_iou(
-                            outputs2, labels2))
-                        # todo
+                            voutmask_ts, vmask_ts))
+                        # TODO
                         break
 
-                    val_iou = sum(val_ious)/len(val_ious)
+                    val_iou = mean(val_ious)
 
                     print(
                         f"{branch_name}",
+                        f" {device}",
                         f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
                         f" [train_batch_iou: {round(train_batch_iou,6)}]"
@@ -494,62 +546,48 @@ if __name__ == "__main__":
 
                     # 可视化
                     if show_img_tag:
+                        result = results[0]
+                        image = result['image']
+                        mask = result['mask']
+                        heatmap_show = result['heatmapShow']
+                        outmask = tensor2mask(outmask_ts[0])
 
-                        train_input = inputs[0]
-                        train_output = outputs[0]
-                        train_label = labels[0]
+                        vresult = vresults[0]
+                        vimage = vresult['image']
+                        vmask = vresult['mask']
+                        vheatmap_show = vresult['heatmapShow']
+                        voutmask = tensor2mask(voutmask_ts[0])
 
-                        val_input = inputs2[0]
-                        val_output = outputs2[0]
-                        val_label = labels2[0]
+                        mix = image.copy()
+                        draw_mask(mix, outmask)
 
-                        def tensor2mask(tensor, thres=0.5):
-                            return (tensor[0]*255).cpu().numpy().astype(np.uint8)
+                        vmix = vimage.copy()
+                        draw_mask(vmix, voutmask)
 
-                        def tensor2image(tensor):
-                            return ((tensor.permute(1, 2, 0)+1)*0.5*255).cpu().numpy().astype(np.uint8)
-
-                        train_img = tensor2image(train_input)
-                        train_label_mask = tensor2mask(train_label)
-                        train_mask = tensor2mask(train_output)
-
-                        val_img = tensor2image(val_input)
-                        val_label_mask = tensor2mask(val_label)
-                        val_mask = tensor2mask(val_output)
-
-                        train_mix = train_img.copy()
-                        draw_mask(train_mix, train_mask)
-
-                        val_mix = val_img.copy()
-                        draw_mask(val_mix, val_mask)
-
-                        train_mask3 = cv.applyColorMap(
-                            train_mask, cv.COLORMAP_HOT)
-                        val_mask3 = cv.applyColorMap(val_mask, cv.COLORMAP_HOT)
+                        outmask_show = cv.applyColorMap(
+                            outmask, cv.COLORMAP_HOT)
+                        voutmask_show = cv.applyColorMap(
+                            voutmask, cv.COLORMAP_HOT)
 
                         # 蓝图变红图
                         # train_mask3 = cv.cvtColor(
                         #     train_mask3, cv.COLOR_BGR2RGB)
                         # val_mask3 = cv.cvtColor(val_mask3, cv.COLOR_BGR2RGB)
 
-                        train_label_mask3 = cv.cvtColor(
-                            train_label_mask, cv.COLOR_GRAY2RGB)
-                        val_label_mask3 = cv.cvtColor(
-                            val_label_mask, cv.COLOR_GRAY2RGB)
+                        mask3 = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
+                        vmask3 = cv.cvtColor(vmask, cv.COLOR_GRAY2RGB)
 
                         train_show_img = np.concatenate(
-                            [train_img, train_label_mask3, train_mix, train_mask3], axis=1)
+                            [image, mask3, heatmap_show, mix, outmask_show], axis=1)
 
                         val_show_img = np.concatenate(
-                            [val_img, val_label_mask3, val_mix, val_mask3], axis=1)
+                            [vimage, vmask3, vheatmap_show, vmix, voutmask_show], axis=1)
 
                         show_img = np.concatenate(
                             [train_show_img, val_show_img], axis=0)
 
                         show_img = cv.resize(show_img, (0, 0), fx=0.5, fy=0.5)
                         show_img = cv.cvtColor(show_img, cv.COLOR_RGB2BGR)
-
-                        # TODO 这里重复了，将来封装成统一预测过程
 
                     # 模型重启
                     if iou_max-val_iou > 0.3:
@@ -570,7 +608,6 @@ if __name__ == "__main__":
                                 load_checkpoint(branch_best_path)
                                 epoch = start_epoch - 1
                                 break
-                            # TODO 模型保存和读取过程，gpu的加载相关没有做好，容易爆内存， 多个文件同时读写可能冲突
 
                     # 模型保存
                     if val_iou > iou_max and val_iou > 0.7:
