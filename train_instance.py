@@ -16,7 +16,7 @@ import imgaug as ia
 
 from dataset.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
 from dataset.dataset_visual import mask2box, draw_mask
-from common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, mask_iou, get_user_hostname
+from common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, get_user_hostname, mask_iou, mean
 from debug_function import *
 from model.segment import Segment
 
@@ -244,6 +244,16 @@ class InstanceCommonDataset(Dataset):
         return len(self.results)
 
 
+def collate_fn(batch):
+    def deal(samples: list):
+        if isinstance(samples[0], torch.Tensor):
+            return torch.stack(samples, axis=0)
+        else:
+            return samples
+
+    return [deal(list(samples)) for samples in zip(*batch)]
+
+
 def parse_args():
 
     if get_user_hostname() == YANMIAO_MACPRO_NAME:
@@ -292,16 +302,6 @@ if __name__ == "__main__":
     args = parse_args()
 
     # 数据导入
-    def collate_fn(batch):
-        def deal(samples):
-            if isinstance(samples[0], torch.Tensor):
-                return torch.stack(samples, axis=0)
-            else:
-                return list(samples)
-
-        return [deal(samples) for samples in zip(*batch)]
-
-
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
     trainloader = DataLoader(
@@ -392,14 +392,15 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (inputs, labels, heatmaps, results) in enumerate(trainloader):
+        for i0, (image_ts, mask_ts, heatmap_ts, results) in enumerate(trainloader):
             model.train()
-            inputs, labels, heatmaps = inputs.to(
-                device), labels.to(device), heatmaps.to(device)
+            image_ts, mask_ts = image_ts.to(device), mask_ts.to(device)
+            heatmap_ts = heatmap_ts.to(device)
+
             optimizer.zero_grad()
 
-            outputs = model.train_batch(inputs, heatmaps)
-            loss = criterion(outputs, labels)
+            outmask_ts = model.train_batch(image_ts, heatmap_ts)
+            loss = criterion(outmask_ts, mask_ts)
             loss.backward()
             optimizer.step()
 
@@ -420,21 +421,21 @@ if __name__ == "__main__":
                     model.eval()
 
                     # 打印iou
-                    def tensors_mean_iou(outputs, labels):
+                    def tensors_mean_iou(outmask_ts, mask_ts):
                         ious = []
-                        for output, label in zip(outputs, labels):
-                            output = output[0].cpu().numpy()*255
-                            label = label[0].cpu().numpy()*255
-                            ious.append(mask_iou(output, label))
-                        return sum(ious)/len(ious)
+                        for outmask_t, mask_t in zip(outmask_ts, mask_ts):
+                            outmask = outmask_t[0].cpu().numpy()*255
+                            mask = mask_t[0].cpu().numpy()*255
+                            ious.append(mask_iou(outmask, mask))
+                        return mean(ious)
 
-                    train_batch_iou = tensors_mean_iou(outputs, labels)
+                    train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
 
                     val_ious = []
-                    for j0, (inputs2, labels2, heatmaps2) in enumerate(valloader):
-                        inputs2, labels2, heatmaps2 = inputs2.to(
+                    for j0, (image_tensors2, labels2, heatmaps2) in enumerate(valloader):
+                        image_tensors2, labels2, heatmaps2 = image_tensors2.to(
                             device), labels2.to(device), heatmaps2.to(device)
-                        outputs2 = model.train_batch(inputs2, heatmaps2)
+                        outputs2 = model.train_batch(image_tensors2, heatmaps2)
                         val_ious.append(tensors_mean_iou(outputs2, labels2))
                         # todo
                         break
@@ -452,11 +453,11 @@ if __name__ == "__main__":
                     # 可视化
                     if show_img_tag:
 
-                        train_input = inputs[0]
+                        train_input = image_tensors[0]
                         train_output = outputs[0]
                         train_label = labels[0]
 
-                        val_input = inputs2[0]
+                        val_input = image_tensors2[0]
                         val_output = outputs2[0]
                         val_label = labels2[0]
 
