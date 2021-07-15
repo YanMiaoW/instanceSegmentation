@@ -112,8 +112,6 @@ class InstanceCommonDataset(Dataset):
 
         self.results = []
 
-        print('load common dataset from ' + dataset_dir)
-
         for ann in common_ann_loader(dataset_dir):
 
             common_choice(ann, key_choices={'image', 'object'})
@@ -304,11 +302,15 @@ if __name__ == "__main__":
     args = parse_args()
 
     # 数据导入
+    print('load train common dataset from ' + args.train_dataset_dir)
+
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
     trainloader = DataLoader(
         trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn
     )
+
+    print('load val common dataset from ' + args.train_dataset_dir)
 
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
@@ -487,10 +489,10 @@ if __name__ == "__main__":
                         vmask3 = cv.cvtColor(vmask, cv.COLOR_GRAY2RGB)
 
                         train_show_img = np.concatenate(
-                            [image, mask3, heatmap_show ,mix ,outmask_show], axis=1)
+                            [image, mask3, heatmap_show, mix, outmask_show], axis=1)
 
                         val_show_img = np.concatenate(
-                            [vimage, vmask3, vheatmap_show ,vmix ,voutmask_show], axis=1)
+                            [vimage, vmask3, vheatmap_show, vmix, voutmask_show], axis=1)
 
                         show_img = np.concatenate(
                             [train_show_img, val_show_img], axis=0)
