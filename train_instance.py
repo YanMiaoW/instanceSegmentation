@@ -472,10 +472,10 @@ if __name__ == "__main__":
                         voutmask = tensor2mask(voutmask_ts[0])
 
                         mix = image.copy()
-                        draw_mask(mix, mask)
+                        draw_mask(mix, outmask)
 
                         vmix = vimage.copy()
-                        draw_mask(vmix, vmask)
+                        draw_mask(vmix, voutmask)
 
                         outmask_show = cv.applyColorMap(
                             outmask, cv.COLORMAP_HOT)
