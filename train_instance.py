@@ -104,11 +104,14 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
 
     return heatmaps, heatmap_show
 
+
 def connection2pafs(keypoint, shape, sigma=10):
 
     pafs = []
 
-    for part1, part2 in CONNECTION_PARTS:
+    paf_show = np.zeros((*shape, 3), dtype=np.uint8)
+
+    for i0, (part1, part2) in enumerate(CONNECTION_PARTS):
 
         pafx = np.zeros(shape, dtype=np.float32)
         pafy = np.zeros(shape, dtype=np.float32)
@@ -154,13 +157,20 @@ def connection2pafs(keypoint, shape, sigma=10):
 
             idxs = idxs.reshape(xs.shape)
 
-            pafx[y_min:y_max, x_min:x_max][idxs] = v0[0] / v0_norm
-            pafy[y_min:y_max, x_min:x_max][idxs] = v0[1] / v0_norm
+            region = pafx[y_min:y_max, x_min:x_max]
+            region[idxs] = v0[0] / v0_norm
+            region[idxs] = v0[1] / v0_norm
+
+            show_region = paf_show[y_min:y_max, x_min:x_max]
+            color_region = np.zeros((*region.shape, 3), np.float32)
+            color_region[idxs] = get_color(i0, len(CONNECTION_PARTS))
+            show_region[:] = np.max(
+                np.stack((show_region, color_region)), axis=0)
 
         pafs.append(pafx)
         pafs.append(pafy)
 
-    return pafs
+    return pafs, paf_show
 
 
 class InstanceCommonDataset(Dataset):
@@ -306,26 +316,28 @@ class InstanceCommonDataset(Dataset):
         mask = result[key_combine('instance_mask', 'mask')]
         keypoint = result[key_combine('body_keypoint', 'sub_dict')]
 
+        pafs, paf_show = connection2pafs(keypoint, self.out_size)
         heatmaps, heatmap_show = keypoint2heatmaps(keypoint, self.out_size)
-        pafs = connection2pafs(keypoint, self.out_size)
 
         # image_pil = Image.fromarray(image)
         # mask_pil = Image.fromarray(mask)
         # heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
+        # paf_pils = [Image.fromarray(paf) for paf in pafs]
 
         image_tensor = self.img_transform(image)
         mask_tensor = self.mask_transform(mask)
         heatmap_tensors = [self.heatmap_transfrom(
             heatmap) for heatmap in heatmaps]
         heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
-        paf_pils = [self.paf_transfrom(
-            paf_pil) for paf_pil in pafs]
-        paf_tensor = torch.cat(paf_pils, dim=0)
+        paf_tensors = [self.paf_transfrom(
+            paf) for paf in pafs]
+        paf_tensor = torch.cat(paf_tensors, dim=0)
 
         out = {}
         out['image'] = image
         out['mask'] = mask
         out['heatmapShow'] = heatmap_show
+        out['pafShow'] = paf_show
 
         return image_tensor, mask_tensor, heatmap_tensor, paf_tensor, out
 
@@ -344,7 +356,7 @@ def collate_fn(batch):
 
 
 def parse_args():
-    
+
     if get_user_hostname() == YANMIAO_MACPRO_NAME:
         args = {
             # "gpu_id": 2,
@@ -475,7 +487,7 @@ if __name__ == "__main__":
     show_img_tag = True
 
     if show_img_tag:
-        window_name = f"{branch_name}   {device}    img | label | heatmap | mix | mask"
+        window_name = f"{branch_name}   {device}    img | label | heatmap | paf | mix | mask"
         show_img = None
 
     print("training...")
@@ -485,14 +497,14 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (image_ts, mask_ts, heatmap_ts, results) in enumerate(trainloader):
+        for i0, (image_ts, mask_ts, heatmap_ts, paf_ts, results) in enumerate(trainloader):
             model.train()
             image_ts, mask_ts = image_ts.to(device), mask_ts.to(device)
-            heatmap_ts = heatmap_ts.to(device)
+            heatmap_ts, paf_ts = heatmap_ts.to(device), paf_ts.to(device)
 
             optimizer.zero_grad()
 
-            outmask_ts = model.train_batch(image_ts, heatmap_ts)
+            outmask_ts = model.train_batch(image_ts, heatmap_ts, paf_ts)
             loss = criterion(outmask_ts, mask_ts)
             loss.backward()
             optimizer.step()
@@ -523,11 +535,13 @@ if __name__ == "__main__":
                     train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
 
                     val_ious = []
-                    for j0, (vimage_ts, vmask_ts, vheatmap_ts, vresults) in enumerate(valloader):
+                    for j0, (vimage_ts, vmask_ts, vheatmap_ts, vpaf_ts, vresults) in enumerate(valloader):
                         vimage_ts, vmask_ts = vimage_ts.to(
                             device), vmask_ts.to(device)
                         vheatmap_ts = vheatmap_ts.to(device)
-                        voutmask_ts = model.train_batch(vimage_ts, vheatmap_ts)
+                        vpaf_ts = vpaf_ts.to(device)
+                        voutmask_ts = model.train_batch(
+                            vimage_ts, vheatmap_ts, vpaf_ts)
                         val_ious.append(tensors_mean_iou(
                             voutmask_ts, vmask_ts))
                         # TODO
@@ -550,12 +564,14 @@ if __name__ == "__main__":
                         image = result['image']
                         mask = result['mask']
                         heatmap_show = result['heatmapShow']
+                        paf_show = result['pafShow']
                         outmask = tensor2mask(outmask_ts[0])
 
                         vresult = vresults[0]
                         vimage = vresult['image']
                         vmask = vresult['mask']
                         vheatmap_show = vresult['heatmapShow']
+                        vpaf_show = vresult['pafShow']
                         voutmask = tensor2mask(voutmask_ts[0])
 
                         mix = image.copy()
@@ -578,10 +594,10 @@ if __name__ == "__main__":
                         vmask3 = cv.cvtColor(vmask, cv.COLOR_GRAY2RGB)
 
                         train_show_img = np.concatenate(
-                            [image, mask3, heatmap_show, mix, outmask_show], axis=1)
+                            [image, mask3, heatmap_show, paf_show, mix, outmask_show], axis=1)
 
                         val_show_img = np.concatenate(
-                            [vimage, vmask3, vheatmap_show, vmix, voutmask_show], axis=1)
+                            [vimage, vmask3, vheatmap_show, vpaf_show, vmix, voutmask_show], axis=1)
 
                         show_img = np.concatenate(
                             [train_show_img, val_show_img], axis=0)
