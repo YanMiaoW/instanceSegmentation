@@ -6,7 +6,6 @@ import os
 import glob
 import tqdm
 import argparse
-from debug_function import *
 
 
 def parse_args():
@@ -21,17 +20,6 @@ def parse_args():
     return args
 
 
-def path_decompose(path):
-    basename = os.path.basename(path)
-    dirname = os.path.dirname(path)
-    ext = os.path.splitext(path)[-1][1:]
-    basename = os.path.splitext(basename)[0]
-    return dirname, basename, ext
-
-
 if __name__ == "__main__":
-    args = parse_args()
-
-    for filepath in tqdm.tqdm(glob.glob(os.path.join(args.test_image_dir, "*[jpg,png,jpgerr]"))):
-        dirname, basename, ext = path_decompose(filepath)
+    pass
 

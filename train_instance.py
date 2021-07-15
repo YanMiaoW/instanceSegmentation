@@ -14,10 +14,12 @@ import math
 from imgaug import augmenters as iaa
 import imgaug as ia
 
-from dataset.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
-from dataset.dataset_visual import mask2box, draw_mask
-from common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, get_user_hostname, mask_iou, mean
-from debug_function import *
+from ymtools.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
+from ymtools.dataset_visual import mask2box, draw_mask
+from ymtools.common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, get_user_hostname, mean
+from ymtools.eval_function import mask_iou
+from ymtools.debug_function import *
+
 from model.segment import Segment
 
 ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
@@ -311,7 +313,7 @@ if __name__ == "__main__":
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
     valloader = DataLoader(
-        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
+        trainset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
     )
 
     # 模型，优化器，损失
@@ -420,31 +422,31 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     model.eval()
 
+                    def tensor2mask(tensor):
+                        return (tensor[0]*255).cpu().detach().numpy().astype(np.uint8)
+
                     # 打印iou
-                    def tensors_mean_iou
-                    (outmask_ts, mask_ts):
-                        ious = []
-                        for outmask_t, mask_t in zip(outmask_ts, mask_ts):
-                            outmask = outmask_t[0].cpu().numpy()*255
-                            mask = mask_t[0].cpu().numpy()*255
-                            ious.append(mask_iou(outmask, mask))
-                        return mean(ious)
+                    def tensors_mean_iou(outmask_ts, mask_ts):
+                        return mean(mask_iou(tensor2mask(outmask_t), tensor2mask(mask_t)) for outmask_t, mask_t in zip(outmask_ts, mask_ts))
 
                     train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
 
                     val_ious = []
-                    for j0, (image_tensors2, labels2, heatmaps2) in enumerate(valloader):
-                        image_tensors2, labels2, heatmaps2 = image_tensors2.to(
-                            device), labels2.to(device), heatmaps2.to(device)
-                        outputs2 = model.train_batch(image_tensors2, heatmaps2)
-                        val_ious.append(tensors_mean_iou(outputs2, labels2))
-                        # todo
+                    for j0, (vimage_ts, vmask_ts, vheatmap_ts, vresults) in enumerate(valloader):
+                        vimage_ts, vmask_ts = vimage_ts.to(
+                            device), vmask_ts.to(device)
+                        vheatmap_ts = vheatmap_ts.to(device)
+                        voutmask_ts = model.train_batch(vimage_ts, vheatmap_ts)
+                        val_ious.append(tensors_mean_iou(
+                            voutmask_ts, vmask_ts))
+                        # TODO
                         break
 
-                    val_iou = sum(val_ious)/len(val_ious)
+                    val_iou = mean(val_ious)
 
                     print(
                         f"{branch_name}",
+                        f" {device}",
                         f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
                         f" [train_batch_iou: {round(train_batch_iou,6)}]"
@@ -453,54 +455,42 @@ if __name__ == "__main__":
 
                     # 可视化
                     if show_img_tag:
+                        result = results[0]
+                        image = result['image']
+                        mask = result['mask']
+                        heatmap_show = result['heatmapShow']
+                        outmask = tensor2mask(outmask_ts[0])
 
-                        train_input = image_tensors[0]
-                        train_output = outputs[0]
-                        train_label = labels[0]
+                        vresult = vresults[0]
+                        vimage = vresult['image']
+                        vmask = vresult['mask']
+                        vheatmap_show = vresult['heatmapShow']
+                        voutmask = tensor2mask(voutmask_ts[0])
 
-                        val_input = image_tensors2[0]
-                        val_output = outputs2[0]
-                        val_label = labels2[0]
+                        mix = image.copy()
+                        draw_mask(mix, mask)
 
-                        def tensor2mask(tensor, thres=0.5):
-                            return (tensor[0]*255).cpu().numpy().astype(np.uint8)
+                        vmix = vimage.copy()
+                        draw_mask(vmix, vmask)
 
-                        def tensor2image(tensor):
-                            return ((tensor.permute(1, 2, 0)+1)*0.5*255).cpu().numpy().astype(np.uint8)
-
-                        train_img = tensor2image(train_input)
-                        train_label_mask = tensor2mask(train_label)
-                        train_mask = tensor2mask(train_output)
-
-                        val_img = tensor2image(val_input)
-                        val_label_mask = tensor2mask(val_label)
-                        val_mask = tensor2mask(val_output)
-
-                        train_mix = train_img.copy()
-                        draw_mask(train_mix, train_mask)
-
-                        val_mix = val_img.copy()
-                        draw_mask(val_mix, val_mask)
-
-                        train_mask3 = cv.applyColorMap(
-                            train_mask, cv.COLORMAP_HOT)
-                        val_mask3 = cv.applyColorMap(val_mask, cv.COLORMAP_HOT)
+                        outmask_show = cv.applyColorMap(
+                            outmask, cv.COLORMAP_HOT)
+                        voutmask_show = cv.applyColorMap(
+                            voutmask, cv.COLORMAP_HOT)
 
                         # 蓝图变红图
                         # train_mask3 = cv.cvtColor(
                         #     train_mask3, cv.COLOR_BGR2RGB)
                         # val_mask3 = cv.cvtColor(val_mask3, cv.COLOR_BGR2RGB)
 
-                        train_label_mask3 = cv.cvtColor(
-                            train_label_mask, cv.COLOR_GRAY2RGB)
-                        val_label_mask3 = cv.cvtColor(
-                            val_label_mask, cv.COLOR_GRAY2RGB)
+                        mask3 = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
+                        vmask3 = cv.cvtColor(vmask, cv.COLOR_GRAY2RGB)
 
                         train_show_img = np.concatenate(
-                            [train_img, train_label_mask3, train_mix, train_mask3], axis=1)
+                            [image, mask3, heatmap_show ,mix ,outmask_show], axis=1)
 
                         val_show_img = np.concatenate(
-                            [val_img, val_label_mask3, val_mix, val_mask3], axis=1)
+                            [vimage, vmask3, vheatmap_show ,vmix ,voutmask_show], axis=1)
 
                         show_img = np.concatenate(
                             [train_show_img, val_show_img], axis=0)
