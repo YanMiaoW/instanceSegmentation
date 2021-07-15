@@ -56,28 +56,30 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
             x, y = keypoint[key_type][key_combine('point', 'point_xy')]
             h, w = shape
 
-            x_min = max(0, int(x - r))
-            x_max = min(w-1, int(x+r+1))
-            y_min = max(0, int(y - r))
-            y_max = min(h-1, int(y+r+1))
+            if x > 0 and x < w and y > 0 and y < h:
 
-            xs = np.arange(x_min, x_max)
-            ys = np.arange(y_min, y_max)[:, np.newaxis]
+                x_min = max(0, int(x - r))
+                x_max = min(w-1, int(x+r+1))
+                y_min = max(0, int(y - r))
+                y_max = min(h-1, int(y+r+1))
 
-            e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
+                xs = np.arange(x_min, x_max)
+                ys = np.arange(y_min, y_max)[:, np.newaxis]
 
-            idxs = np.where(e_table > threshold)
+                e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
 
-            region = heatmap[y_min:y_max, x_min:x_max]
-            region[idxs] = e_table[idxs]
+                idxs = np.where(e_table > threshold)
 
-            show_region = heatmap_show[y_min:y_max, x_min:x_max]
-            color_region = np.zeros((*region.shape, 3), np.float32)
-            color_region[:] = get_color(i0, len(ORDER_PART_NAMES))
-            color_region = (e_table[:, :, np.newaxis]
-                            * color_region).astype(np.uint8)
-            show_region[:] = np.max(
-                np.stack((show_region, color_region)), axis=0)
+                region = heatmap[y_min:y_max, x_min:x_max]
+                region[idxs] = e_table[idxs]
+
+                show_region = heatmap_show[y_min:y_max, x_min:x_max]
+                color_region = np.zeros((*region.shape, 3), np.float32)
+                color_region[:] = get_color(i0, len(ORDER_PART_NAMES))
+                color_region = (e_table[:, :, np.newaxis]
+                                * color_region).astype(np.uint8)
+                show_region[:] = np.max(
+                    np.stack((show_region, color_region)), axis=0)
 
         heatmaps.append(heatmap)
 
@@ -146,7 +148,7 @@ class InstanceCommonDataset(Dataset):
 
                 self.results.append(obj)
 
-        self.__getitem__(0)
+        self.__getitem__(248)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
