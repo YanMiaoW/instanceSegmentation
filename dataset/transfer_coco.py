@@ -1,8 +1,8 @@
 import cv2 as cv
 import numpy as np
 import json
-from common_dataset_api import key_combine
-from common import path_decompose
+from ymtools.common_dataset_api import key_combine
+from ymtools.common import path_decompose
 from shutil import copyfile
 import ochumanApi.vis as vistool
 import tqdm
@@ -231,7 +231,7 @@ def transfer_coco(img_dir, ann_path, save_dir):
 
 
 if __name__ == '__main__':
-    from debug_function import *
+    from ymtools.debug_function import *
     transfer_coco(
         '/Users/yanmiao/yanmiao/data/coco/val2017',
         '/Users/yanmiao/yanmiao/data/coco/annotations/person_keypoints_val2017.json',

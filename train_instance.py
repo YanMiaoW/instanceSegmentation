@@ -421,7 +421,8 @@ if __name__ == "__main__":
                     model.eval()
 
                     # 打印iou
-                    def tensors_mean_iou(outmask_ts, mask_ts):
+                    def tensors_mean_iou
+                    (outmask_ts, mask_ts):
                         ious = []
                         for outmask_t, mask_t in zip(outmask_ts, mask_ts):
                             outmask = outmask_t[0].cpu().numpy()*255
