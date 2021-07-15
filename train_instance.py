@@ -16,7 +16,7 @@ import imgaug as ia
 
 from dataset.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
 from dataset.dataset_visual import mask2box, draw_mask
-from common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, mask_iou
+from common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, mask_iou, get_user_hostname
 from debug_function import *
 from model.segment import Segment
 
@@ -28,13 +28,20 @@ ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
                     'nose', 'right_eye', 'left_eye']
 
 
+def get_color(i, length):
+    v = int((255 / length / 2) * (2 * i + 1))
+    return cv.applyColorMap(np.array([[v]], dtype=np.uint8), cv.COLORMAP_TURBO)[0][0]
+
+
 def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
 
     r = math.sqrt(math.log(threshold)*(-sigma**2))
 
     heatmaps = []
 
-    for key in ORDER_PART_NAMES:
+    heatmap_show = np.zeros((*shape, 3), dtype=np.uint8)
+
+    for i0, key in enumerate(ORDER_PART_NAMES):
 
         heatmap = np.zeros(shape, dtype=np.float32)
 
@@ -59,11 +66,20 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
 
             idxs = np.where(e_table > threshold)
 
-            heatmap[y_min:y_max, x_min:x_max][idxs] = e_table[idxs]
+            region = heatmap[y_min:y_max, x_min:x_max]
+            region[idxs] = e_table[idxs]
+
+            show_region = heatmap_show[y_min:y_max, x_min:x_max]
+            color_region = np.zeros((*region.shape, 3), np.float32)
+            color_region[:] = get_color(i0, len(ORDER_PART_NAMES))
+            color_region = (e_table[:, :, np.newaxis]
+                            * color_region).astype(np.uint8)
+            show_region[:] = np.max(
+                np.stack((show_region, color_region)), axis=0)
 
         heatmaps.append(heatmap)
 
-    return heatmaps
+    return heatmaps, heatmap_show
 
 
 class InstanceCommonDataset(Dataset):
@@ -130,7 +146,7 @@ class InstanceCommonDataset(Dataset):
 
                 self.results.append(obj)
 
-        # self.__getitem__(10)
+        self.__getitem__(10)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -205,46 +221,68 @@ class InstanceCommonDataset(Dataset):
         mask = result[key_combine('instance_mask', 'mask')]
         keypoint = result[key_combine('body_keypoint', 'sub_dict')]
 
-        heatmaps = keypoint2heatmaps(keypoint, self.out_size)
+        heatmaps, heatmap_show = keypoint2heatmaps(keypoint, self.out_size)
 
-        image_pil = Image.fromarray(image)
-        mask_pil = Image.fromarray(mask)
-        heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
+        # image_pil = Image.fromarray(image)
+        # mask_pil = Image.fromarray(mask)
+        # heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
 
         image_tensor = self.img_transform(image)
         mask_tensor = self.mask_transform(mask)
         heatmap_tensors = [self.heatmap_transfrom(
-            heatmap_pil) for heatmap_pil in heatmaps]
+            heatmap) for heatmap in heatmaps]
         heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
 
-        return image_tensor, mask_tensor, heatmap_tensor
+        out = {}
+        out['image'] = image
+        out['mask'] = mask
+        out['heatmapShow'] = heatmap_show
+
+        return image_tensor, mask_tensor, heatmap_tensor, out
 
     def __len__(self):
         return len(self.results)
 
 
 def parse_args():
-    args = {
-        # "gpu_id": 2,
-        "auto_gpu_id": True,
-        "continue_train": True,
-        "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
-        "train_dataset_dir": "/data_ssd/ochuman",
-        "val_dataset_dir": "/data_ssd/ochuman",
-        # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
-        "checkpoint_dir": "/checkpoint/segment",
-        # "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-        # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-        # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
-        # "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
-        # "checkpoint_filename": "union_best.pth",
-        # "pretrained_path":"",
-        "epoch": 30,
-        "show_iter": 20,
-        "val_iter": 120,
-        "batch_size": 8,
-        "cpu_num": 2,
-    }
+
+    if get_user_hostname() == YANMIAO_MACPRO_NAME:
+        args = {
+            # "gpu_id": 2,
+            # "auto_gpu_id": True,
+            "continue_train": True,
+            "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
+            "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+            "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+            # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
+            "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
+            # "checkpoint_save_path": "",
+            # "pretrained_path":"",
+            "epoch": 30,
+            "show_iter": 20,
+            "val_iter": 120,
+            "batch_size": 8,
+            "cpu_num": 2,
+        }
+
+    elif get_user_hostname() == ROOT_201_NAME:
+        args = {
+            # "gpu_id": 2,
+            "auto_gpu_id": True,
+            "continue_train": True,
+            "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
+            "train_dataset_dir": "/data_ssd/ochuman",
+            "val_dataset_dir": "/data_ssd/ochuman",
+            # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
+            "checkpoint_dir": "/checkpoint/segment",
+            # "checkpoint_save_path": "",
+            # "pretrained_path":"",
+            "epoch": 30,
+            "show_iter": 20,
+            "val_iter": 120,
+            "batch_size": 8,
+            "cpu_num": 2,
+        }
 
     return dict2class(args)
 
@@ -254,16 +292,74 @@ if __name__ == "__main__":
     args = parse_args()
 
     # 数据导入
+    def default_collate(batch):
+        import re
+        import collections
+        np_str_obj_array_pattern = re.compile(r'[SaUO]')
+        string_classes = (str, bytes)
+
+
+        elem = batch[0]
+        elem_type = type(elem)
+        if isinstance(elem, torch.Tensor):
+            out = None
+            if torch.utils.data.get_worker_info() is not None:
+                # If we're in a background process, concatenate directly into a
+                # shared memory tensor to avoid an extra copy
+                numel = sum([x.numel() for x in batch])
+                storage = elem.storage()._new_shared(numel)
+                out = elem.new(storage)
+            return torch.stack(batch, 0, out=out)
+        elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
+                and elem_type.__name__ != 'string_':
+            if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
+                # array of string classes and object
+                if np_str_obj_array_pattern.search(elem.dtype.str) is not None:
+                    print()
+                return default_collate([torch.as_tensor(b) for b in batch])
+            elif elem.shape == ():  # scalars
+                return torch.as_tensor(batch)
+        elif isinstance(elem, float):
+            return torch.tensor(batch, dtype=torch.float64)
+        elif isinstance(elem, int):
+            return torch.tensor(batch)
+        elif isinstance(elem, string_classes):
+            return batch
+        elif isinstance(elem, collections.abc.Mapping):
+            return {key: default_collate([d[key] for d in batch]) for key in elem}
+        elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple
+            return elem_type(*(default_collate(samples) for samples in zip(*batch)))
+        elif isinstance(elem, collections.abc.Sequence):
+            # check to make sure that the elements in batch have consistent size
+            it = iter(batch)
+            elem_size = len(next(it))
+            if not all(len(elem) == elem_size for elem in it):
+                raise RuntimeError('each element in list of batch should be of equal size')
+            transposed = zip(*batch)
+            return [default_collate(samples) for samples in transposed]
+
+    
+    def collate_fn(batch):
+        print(batch)
+        def deal(samples):
+            if isinstance(samples[0], torch.Tensor):
+                return torch.stack(samples, axis=0)
+            else:
+                return samples
+
+        return (deal(samples) for samples in zip(*batch))
+
+
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
     trainloader = DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num
+        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=default_collate
     )
 
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
     valloader = DataLoader(
-        valset, batch_size=args.batch_size, shuffle=True, num_workers=1
+        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=default_collate
     )
 
     # 模型，优化器，损失
@@ -283,9 +379,8 @@ if __name__ == "__main__":
 
     print(f'branch name: {branch_name}')
 
-    if hasattr(args, 'checkpoint_filename'):
-        branch_best_path = os.path.join(
-            args.checkpoint_dir, args.checkpoint_filename)
+    if hasattr(args, 'checkpoint_save_path'):
+        branch_best_path = args.checkpoint_save_path
     else:
         branch_best_path = os.path.join(
             args.checkpoint_dir, f'{branch_name}_best.pth')
@@ -345,7 +440,7 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (inputs, labels, heatmaps) in enumerate(trainloader):
+        for i0, (inputs, labels, heatmaps, res) in enumerate(trainloader):
             model.train()
             inputs, labels, heatmaps = inputs.to(
                 device), labels.to(device), heatmaps.to(device)
