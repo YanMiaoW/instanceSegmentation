@@ -317,11 +317,11 @@ if __name__ == "__main__":
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
     valloader = DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
+        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
     )
 
     # 模型，优化器，损失
-    model = Segment(3+17)
+    model = Segment(3 + len(ORDER_PART_NAMES))
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
     optimizer = optim.Adam(model.parameters())
