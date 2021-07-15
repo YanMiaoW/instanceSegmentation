@@ -292,74 +292,26 @@ if __name__ == "__main__":
     args = parse_args()
 
     # 数据导入
-    def default_collate(batch):
-        import re
-        import collections
-        np_str_obj_array_pattern = re.compile(r'[SaUO]')
-        string_classes = (str, bytes)
-
-
-        elem = batch[0]
-        elem_type = type(elem)
-        if isinstance(elem, torch.Tensor):
-            out = None
-            if torch.utils.data.get_worker_info() is not None:
-                # If we're in a background process, concatenate directly into a
-                # shared memory tensor to avoid an extra copy
-                numel = sum([x.numel() for x in batch])
-                storage = elem.storage()._new_shared(numel)
-                out = elem.new(storage)
-            return torch.stack(batch, 0, out=out)
-        elif elem_type.__module__ == 'numpy' and elem_type.__name__ != 'str_' \
-                and elem_type.__name__ != 'string_':
-            if elem_type.__name__ == 'ndarray' or elem_type.__name__ == 'memmap':
-                # array of string classes and object
-                if np_str_obj_array_pattern.search(elem.dtype.str) is not None:
-                    print()
-                return default_collate([torch.as_tensor(b) for b in batch])
-            elif elem.shape == ():  # scalars
-                return torch.as_tensor(batch)
-        elif isinstance(elem, float):
-            return torch.tensor(batch, dtype=torch.float64)
-        elif isinstance(elem, int):
-            return torch.tensor(batch)
-        elif isinstance(elem, string_classes):
-            return batch
-        elif isinstance(elem, collections.abc.Mapping):
-            return {key: default_collate([d[key] for d in batch]) for key in elem}
-        elif isinstance(elem, tuple) and hasattr(elem, '_fields'):  # namedtuple
-            return elem_type(*(default_collate(samples) for samples in zip(*batch)))
-        elif isinstance(elem, collections.abc.Sequence):
-            # check to make sure that the elements in batch have consistent size
-            it = iter(batch)
-            elem_size = len(next(it))
-            if not all(len(elem) == elem_size for elem in it):
-                raise RuntimeError('each element in list of batch should be of equal size')
-            transposed = zip(*batch)
-            return [default_collate(samples) for samples in transposed]
-
-    
     def collate_fn(batch):
-        print(batch)
         def deal(samples):
             if isinstance(samples[0], torch.Tensor):
                 return torch.stack(samples, axis=0)
             else:
-                return samples
+                return list(samples)
 
-        return (deal(samples) for samples in zip(*batch))
+        return [deal(samples) for samples in zip(*batch)]
 
 
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
     trainloader = DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=default_collate
+        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn
     )
 
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
     valloader = DataLoader(
-        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=default_collate
+        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
     )
 
     # 模型，优化器，损失
@@ -440,7 +392,7 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (inputs, labels, heatmaps, res) in enumerate(trainloader):
+        for i0, (inputs, labels, heatmaps, results) in enumerate(trainloader):
             model.train()
             inputs, labels, heatmaps = inputs.to(
                 device), labels.to(device), heatmaps.to(device)
