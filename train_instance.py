@@ -146,7 +146,7 @@ class InstanceCommonDataset(Dataset):
 
                 self.results.append(obj)
 
-        self.__getitem__(10)
+        self.__getitem__(0)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -302,7 +302,7 @@ if __name__ == "__main__":
     args = parse_args()
 
     # 数据导入
-    print('load train common dataset from ' + args.train_dataset_dir)
+    print('load train dataset from ' + args.train_dataset_dir)
 
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
@@ -310,7 +310,7 @@ if __name__ == "__main__":
         trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn
     )
 
-    print('load val common dataset from ' + args.train_dataset_dir)
+    print('load val dataset from ' + args.train_dataset_dir)
 
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
