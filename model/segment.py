@@ -1,4 +1,3 @@
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -6,9 +5,9 @@ from torch.autograd import Variable
 import pdb
 import cv2
 import numpy as np
-from debug_function import *
 
 # from net.common import Conv, Focus, SEModule, autopad, fuse_conv_and_bn, init_head_s4
+
 
 def autopad(k, p=None):  # kernel, padding
     # Pad to 'same'
@@ -16,24 +15,29 @@ def autopad(k, p=None):  # kernel, padding
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
 
+
 class init_head_s4(nn.Module):
     def __init__(self, inplanes, planes, outplanes):
         super(init_head_s4, self).__init__()
 
-        self.layer1 = Conv(inplanes, planes, k=5, s=2, p=2, act= nn.PReLU(planes))
-        self.layer2 = Conv(planes, outplanes - inplanes, k=5, s=2, p=2, act=nn.PReLU(outplanes - inplanes))
+        self.layer1 = Conv(inplanes, planes, k=5, s=2,
+                           p=2, act=nn.PReLU(planes))
+        self.layer2 = Conv(planes, outplanes - inplanes, k=5,
+                           s=2, p=2, act=nn.PReLU(outplanes - inplanes))
 
     def forward(self, x):
         x_short = F.max_pool2d(x, kernel_size=4, stride=4)
         x_out = self.layer2(self.layer1(x))
         return torch.cat((x_short, x_out), dim=1)
-    
-    
+
+
 class Conv(nn.Module):
     # Standard convolution
-    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=nn.Hardswish(), bias=True):  # ch_in, ch_out, kernel, stride, padding, groups
+    # ch_in, ch_out, kernel, stride, padding, groups
+    def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=nn.Hardswish(), bias=True):
         super(Conv, self).__init__()
-        self.conv = nn.Conv2d(c1, c2, k, s, autopad(k, p), groups=g, dilation=d, bias=bias)
+        self.conv = nn.Conv2d(c1, c2, k, s, autopad(
+            k, p), groups=g, dilation=d, bias=bias)
         self.bn = nn.BatchNorm2d(c2)
         self.act = act if act else nn.Identity()
 
@@ -42,7 +46,6 @@ class Conv(nn.Module):
 
     def fuseforward(self, x):
         return self.act(self.conv(x))
-    
 
 
 # fabby ver
@@ -58,7 +61,8 @@ class Bottleneck3x3(nn.Module):
             # nn.Conv2d(planes, planes, kernel_size=3, padding=pad, dilation=dilation, groups=planes),
             # nn.BatchNorm2d(planes),
             # nn.PReLU(planes),
-            Conv(planes, planes, k=3, p=pad, d=dilation, g=planes, act= nn.PReLU(planes)),
+            Conv(planes, planes, k=3, p=pad, d=dilation,
+                 g=planes, act=nn.PReLU(planes)),
 
             # nn.Conv2d(planes, inplanes, kernel_size=1),
             # nn.BatchNorm2d(inplanes),
@@ -73,6 +77,7 @@ class Bottleneck3x3(nn.Module):
         out = self.prelu(out)
 
         return out
+
 
 class Bottleneck5x5(nn.Module):
     def __init__(self, inplanes, planes):
@@ -83,11 +88,13 @@ class Bottleneck5x5(nn.Module):
             # nn.PReLU(planes),
             Conv(inplanes, planes, k=1, act=nn.PReLU(planes)),
 
-            nn.Conv2d(planes, planes, kernel_size=(5, 1), padding=(2, 0), groups=planes),
+            nn.Conv2d(planes, planes, kernel_size=(
+                5, 1), padding=(2, 0), groups=planes),
             # nn.Conv2d(planes, planes, kernel_size=(1, 5), padding=(0, 2)),
             # nn.BatchNorm2d(planes),
             # nn.PReLU(planes),
-            Conv(planes, planes, k=(1, 5), p=(0, 2), g=planes, act=nn.PReLU(planes)),
+            Conv(planes, planes, k=(1, 5), p=(0, 2),
+                 g=planes, act=nn.PReLU(planes)),
 
             # nn.Conv2d(planes, inplanes, kernel_size=1),
             # nn.BatchNorm2d(inplanes),
@@ -103,6 +110,7 @@ class Bottleneck5x5(nn.Module):
 
         return out
 
+
 class BottleneckDown2(nn.Module):
     def __init__(self, inplanes, planes, outplanes):
         super(BottleneckDown2, self).__init__()
@@ -110,12 +118,14 @@ class BottleneckDown2(nn.Module):
             # nn.Conv2d(inplanes, planes, kernel_size=2, stride=2),
             # nn.BatchNorm2d(planes),
             # nn.PReLU(planes),
-            Conv(inplanes, planes, k=2, s=2, p=0, act=nn.PReLU(planes)),  ## ==!!!!==
+            Conv(inplanes, planes, k=2, s=2, p=0,
+                 act=nn.PReLU(planes)),  # ==!!!!==
 
             # nn.Conv2d(planes, planes, kernel_size=3, padding=1, stride=1, groups=planes),
             # nn.BatchNorm2d(planes),
             # nn.PReLU(planes),
-            Conv(planes, planes, k=3, s=1, p=1, g=planes, act=nn.PReLU(planes)),
+            Conv(planes, planes, k=3, s=1, p=1,
+                 g=planes, act=nn.PReLU(planes)),
 
             # nn.Conv2d(planes, outplanes, kernel_size=1),
             # nn.BatchNorm2d(outplanes),
@@ -138,6 +148,7 @@ class BottleneckDown2(nn.Module):
         out = self.prelu(out)
 
         return out, residual_1
+
 
 class BottleneckDim_Res(nn.Module):  # down dim
     def __init__(self, inplanes, planes, outplanes, usePrelu):
@@ -197,6 +208,7 @@ class BottleneckDim_Res(nn.Module):  # down dim
 
         return out
 
+
 class BottleneckDim(nn.Module):  # down dim
     def __init__(self, inplanes, planes, outplanes, usePrelu):
         super(BottleneckDim, self).__init__()
@@ -248,6 +260,7 @@ class BottleneckDim(nn.Module):  # down dim
 
         return out
 
+
 class BottleneckUp(nn.Module):  # upsample
     def __init__(self, inplanes, planes, outplanes):
         super(BottleneckUp, self).__init__()
@@ -257,7 +270,8 @@ class BottleneckUp(nn.Module):  # upsample
             # nn.ReLU(inplace=True),
             Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=True)),
 
-            nn.ConvTranspose2d(planes, planes, kernel_size=4, padding=1, stride=2),
+            nn.ConvTranspose2d(planes, planes, kernel_size=4,
+                               padding=1, stride=2),
             nn.BatchNorm2d(planes),
             nn.ReLU(inplace=True),
 
@@ -278,6 +292,7 @@ class BottleneckUp(nn.Module):  # upsample
 
         return out
 
+
 class BottleneckUp_Res(nn.Module):  # upsample
     def __init__(self, inplanes, planes, outplanes):
         super(BottleneckUp_Res, self).__init__()
@@ -287,7 +302,8 @@ class BottleneckUp_Res(nn.Module):  # upsample
             # nn.ReLU(inplace=True),
             Conv(inplanes, planes, k=1, act=nn.ReLU(inplace=True)),
 
-            nn.ConvTranspose2d(planes, planes, kernel_size=4, padding=1, stride=2),
+            nn.ConvTranspose2d(planes, planes, kernel_size=4,
+                               padding=1, stride=2),
             nn.BatchNorm2d(planes),
             nn.ReLU(inplace=True),
 
@@ -318,10 +334,19 @@ class BottleneckUp_Res(nn.Module):  # upsample
 
         return out
 
+
+class BottleneckUp_Res_Other(BottleneckUp_Res):
+    def __init__(self, inplanes, planes, outplanes, other):
+        super().__init__(inplanes, planes, outplanes)
+        self.uppool = nn.Sequential(
+            nn.UpsamplingNearest2d(scale_factor=2),
+            nn.Conv2d(outplanes + other, outplanes, 1, 1, 0)
+        )
+
+
 class Segment(nn.Module):
-    def __init__(self, num_classes=1, use_aux = False):
+    def __init__(self, in_channel):
         super().__init__()
-        self.num_classes = num_classes
         self.export = False
         self.output_mid_features = False
 
@@ -330,44 +355,59 @@ class Segment(nn.Module):
         # self.init_conv = Focus(3, self.init_Dim, k=3, s=1, act=nn.PReLU(self.init_Dim))
 
         # init section
-        self.init_Dim = 16
-        self.init_conv = init_head_s4(3, 8, self.init_Dim)
+        self.init_Dim = 16+in_channel
+        self.init_conv = init_head_s4(in_channel, 16, self.init_Dim)
 
         # section 1
         self.bottle1_downDim = 16
         self.bottle1_Dim = 48
-        self.bottle1_1 = BottleneckDown2(self.init_Dim, self.bottle1_downDim, self.bottle1_Dim)  # bottle 1_1
+        self.bottle1_1 = BottleneckDown2(
+            self.init_Dim, self.bottle1_downDim, self.bottle1_Dim)  # bottle 1_1
         self.bottle1_x = nn.Sequential(
-            Bottleneck3x3(self.bottle1_Dim, self.bottle1_downDim),  # bottle 1_2
-            Bottleneck3x3(self.bottle1_Dim, self.bottle1_downDim),  # bottle 1_3
-            Bottleneck3x3(self.bottle1_Dim, self.bottle1_downDim),  # bottle 1_4
-            Bottleneck3x3(self.bottle1_Dim, self.bottle1_downDim),  # bottle 1_5
+            Bottleneck3x3(self.bottle1_Dim,
+                          self.bottle1_downDim),  # bottle 1_2
+            Bottleneck3x3(self.bottle1_Dim,
+                          self.bottle1_downDim),  # bottle 1_3
+            Bottleneck3x3(self.bottle1_Dim,
+                          self.bottle1_downDim),  # bottle 1_4
+            Bottleneck3x3(self.bottle1_Dim,
+                          self.bottle1_downDim),  # bottle 1_5
         )
 
         # section 2
         self.bottle2_downDim = 48
         self.bottle2_Dim = 128
-        self.bottle2_1 = BottleneckDown2(self.bottle1_Dim, self.bottle1_downDim, self.bottle2_Dim)
+        self.bottle2_1 = BottleneckDown2(
+            self.bottle1_Dim, self.bottle1_downDim, self.bottle2_Dim)
         self.bottle2_x = nn.Sequential(
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim),  # bottle 2_2
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim, pad=2, dilation=2),  # dilated 2  # bottle 2_3
+            Bottleneck3x3(self.bottle2_Dim,
+                          self.bottle2_downDim),  # bottle 2_2
+            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim,
+                          pad=2, dilation=2),  # dilated 2  # bottle 2_3
             # Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim), #bottle 2_4
             # Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim, pad=2, dilation=2), # bottle 2_5
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim),#bottle 2_6
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim, pad=4, dilation=4),  # dilated 4 # bottle 2_7
+            Bottleneck3x3(self.bottle2_Dim,
+                          self.bottle2_downDim),  # bottle 2_6
+            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim,
+                          pad=4, dilation=4),  # dilated 4 # bottle 2_7
             # Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim),  # asymmetric 5  # bottle 2_8
             Bottleneck5x5(self.bottle2_Dim, self.bottle2_downDim),
             # SEModule(self.bottle2_Dim),
         )
 
         # section 3
-        self.bottle3_1 = BottleneckDim_Res(self.bottle2_Dim * 2, self.bottle2_downDim, self.bottle2_Dim, usePrelu=True)
-        #self.bottle3_1 = Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim)#bottle 3_1
+        self.bottle3_1 = BottleneckDim_Res(
+            self.bottle2_Dim * 2, self.bottle2_downDim, self.bottle2_Dim, usePrelu=True)
+        # self.bottle3_1 = Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim)#bottle 3_1
         self.bottle3_x = nn.Sequential(
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim),  # bottle 3_2
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim, pad=2, dilation=2),  # dilated 2  # bottle 3_3
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim),  # bottle 3_4
-            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim, pad=4, dilation=4),  # bottle 2_5
+            Bottleneck3x3(self.bottle2_Dim,
+                          self.bottle2_downDim),  # bottle 3_2
+            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim,
+                          pad=2, dilation=2),  # dilated 2  # bottle 3_3
+            Bottleneck3x3(self.bottle2_Dim,
+                          self.bottle2_downDim),  # bottle 3_4
+            Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim,
+                          pad=4, dilation=4),  # bottle 2_5
             # Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim),  # bottle 3_6
             # Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim, pad=8, dilation=8),  # dilated 8  # bottle 3_7
             # Bottleneck3x3(self.bottle2_Dim, self.bottle2_downDim),  # bottle 3_8
@@ -377,23 +417,25 @@ class Segment(nn.Module):
         )
 
         # section 4
-        self.bottle4_1up = BottleneckUp_Res(self.bottle2_Dim, self.bottle1_downDim, self.bottle1_Dim)
-        self.bottle4_2 = BottleneckDim_Res(self.bottle1_Dim * 2, 16, self.bottle1_Dim, usePrelu=False)
+        self.bottle4_1up = BottleneckUp_Res(
+            self.bottle2_Dim, self.bottle1_downDim, self.bottle1_Dim)
+        self.bottle4_2 = BottleneckDim_Res(
+            self.bottle1_Dim * 2, 16, self.bottle1_Dim, usePrelu=False)
         #self.bottle4_2 = BottleneckDim(self.bottle1_Dim , 16, self.bottle1_Dim, usePrelu=False)
-        self.bottle4_3 = BottleneckDim(self.bottle1_Dim, 16, self.bottle1_Dim, usePrelu=False)
+        self.bottle4_3 = BottleneckDim(
+            self.bottle1_Dim, 16, self.bottle1_Dim, usePrelu=False)
 
         # section 5
-        self.bottle5_1up = BottleneckUp_Res(self.bottle1_Dim, 4, self.bottle1_downDim)
-        self.bottle5_2 = BottleneckDim(self.bottle1_downDim, 4, self.bottle1_downDim, usePrelu=False)
+        self.bottle5_1up = BottleneckUp_Res_Other(
+            self.bottle1_Dim, 4, self.bottle1_downDim, self.init_Dim)
+        self.bottle5_2 = BottleneckDim(
+            self.bottle1_downDim, 4, self.bottle1_downDim, usePrelu=False)
 
         # section 6
-        self.bottle6_1 = nn.ConvTranspose2d(self.bottle1_downDim,  4, kernel_size=8, padding=2, stride=4)
-        self.bottle6_2 = nn.Conv2d(4, self.num_classes, kernel_size=3, padding=1)
-
-        # mid_feass
-        self.mid_fea3_1 = nn.Conv2d(self.bottle2_Dim,  self.num_classes, kernel_size=3, padding=1)
-        self.mid_fea4_1 = nn.Conv2d(self.bottle1_Dim,  self.num_classes, kernel_size=3, padding=1)
-        self.mid_fea5_1 = nn.Conv2d(self.bottle1_downDim,   self.num_classes, kernel_size=3, padding=1)
+        self.bottle6_1 = nn.ConvTranspose2d(
+            self.bottle1_downDim,  4, kernel_size=8, padding=2, stride=4)
+        self.bottle6_2 = nn.Conv2d(
+            4, 1, kernel_size=3, padding=1)
 
         self.weights_init()
 
@@ -409,7 +451,8 @@ class Segment(nn.Module):
     def weights_init(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_in', nonlinearity='relu')
+                nn.init.kaiming_normal_(
+                    m.weight, mode='fan_in', nonlinearity='relu')
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
             elif isinstance(m, nn.BatchNorm2d):
@@ -420,17 +463,7 @@ class Segment(nn.Module):
                 if m.bias is not None:
                     nn.init.zeros_(m.bias)
 
-
-    def train_batch(self,x):
-        out = self.forward(x)
-        return torch.sigmoid(out)
-
-    def test_batch(self,x):
-        out = self(x)
-        return torch.sigmoid(out)
-
-
-    def forward(self, x, target=None):
+    def forward(self, x):
         # init section
         # init_out = self.init_conv(x)
         # init_mp = F.max_pool2d(x, kernel_size=2, stride=2)
@@ -474,7 +507,6 @@ class Segment(nn.Module):
 
         return out
 
-
         if self.export == True:
             return torch.sigmoid(out)
 
@@ -496,45 +528,27 @@ class Segment(nn.Module):
             # mask_out = Variable(softmax_output.data.max(1)[1])  # max(1)[0] are max values, max(1)[1] are idxs.
             return softmax_output[:, :1], [output5_1[:, :1], output4_1[:, :1], output3_1[:, :1]]
 
-        # gray_mask = softmax_output.data[:,1,:,:]
-        # # mask_values = Variable(softmax_output.data.max(1)[0])
-        # # out_forshow = torch.max(softmax_output, dim=1)[1]
-        # # #mask = Variable(softmax_output.data.max(1)[0])
-        # out_forshow = torch.max(softmax_output, dim=1)[1]
-        #
-        # #print target
-        # if target is not None:
-        #     pairs = {'out': (out, target),
-        #              'mask_out':(mask_out,target)}
-        #
-        #     return pairs, self.exports(x, out_forshow * np.float(), target)
-        # else:
-        #     return self.exports(x, gray_mask)
-
+    def train_batch(self, x, heatmaps):
+        inp = torch.cat([x, heatmaps], dim=1)
+        out = self.forward(inp)
+        return torch.sigmoid(out)
 
 
 if __name__ == "__main__":
-    # from time import clock
-    #
-    # foreward_time = .0
-    #
-    # for i in range(1000):
-    #     images = Variable(torch.randn(1, 3, 256, 256))
-    #     d = Enet_V1_accuracy_1_3(2)
-    #     # print d
-    #     print "do forward..."
-    #     start_t = clock()
-    #     outputs = d(images)
-    #     foreward_time += clock() - start_t
-    #     print (outputs.size())  # (10, 100)
-    #
-    # print ('run_time:',foreward_time)
+    from ymtools.debug_function import *
+    m = Segment(3)
 
-    images = Variable(torch.randn(1, 3, 480, 480))
-    d = Segment(1)
-    print(d)
-    # from thop import profile
-    output,_ = d(images)
-    print(output.size())
-    # print(profile(d, (images,)))
+    criterion = nn.BCELoss()
+
+    x = torch.zeros((1, 3, 480, 480))
+    label = torch.ones((1, 1, 480, 480))
+
+    o = m.train_batch(x)
+
+    loss = criterion(o, label)
+    loss.backward()
+
+    m = modshow(m, (17+3, 480, 480))
+
+    check(o)
 
