@@ -3,7 +3,7 @@ import cv2 as cv
 import os
 import tqdm
 import numpy as np
-from ymtools.common_dataset_api import key_combine, BODY_PART_CHOICES, CLASS
+from ymlib.common_dataset_api import key_combine, BODY_PART_CHOICES, CLASS
 from shutil import copyfile
 
 
@@ -178,7 +178,7 @@ def transfer_supervisely_to_common(data_dir, save_dir):
 
 if __name__ == "__main__":
     # 示例
-    from ymtools.debug_function import *
+    from ymlib.debug_function import *
     transfer_supervisely_to_common(
         # '/data/SuperviselyPeopleDatasets',
         # '/Users/yanmiao/yanmiao/data/hun_sha_di_pian/labeled/hun',
