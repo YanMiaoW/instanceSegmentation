@@ -535,8 +535,8 @@ class Segment(nn.Module):
 
 
 if __name__ == "__main__":
-    from ymtools.debug_function import *
-    m = Segment(3+17)
+    from ymlib.debug_function import *
+    m = Segment(3)
 
     criterion = nn.BCELoss()
 
