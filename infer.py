@@ -6,7 +6,7 @@ import os
 import glob
 import tqdm
 import argparse
-from debug_function import *
+from ymtools.debug_function import *
 
 
 def parse_args():

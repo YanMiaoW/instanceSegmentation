@@ -535,16 +535,15 @@ class Segment(nn.Module):
 
 
 if __name__ == "__main__":
-    from debug_function import *
-    m = Segment(3+17)
+    from ymlib.debug_function import *
+    m = Segment(3)
 
     criterion = nn.BCELoss()
 
     x = torch.zeros((1, 3, 480, 480))
-    heatmap = torch.zeros((1, 17, 480, 480))
     label = torch.ones((1, 1, 480, 480))
 
-    o = m(x, heatmap)
+    o = m.train_batch(x)
 
     loss = criterion(o, label)
     loss.backward()
@@ -552,3 +551,4 @@ if __name__ == "__main__":
     m = modshow(m, (17+3, 480, 480))
 
     check(o)
+
