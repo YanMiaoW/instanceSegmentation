@@ -357,7 +357,7 @@ if __name__ == "__main__":
                         voutmask_ts = model.train_batch(vimage_ts)
                         val_ious.append(tensors_mean_iou(
                             voutmask_ts, vmask_ts))
-                        # TODO
+                        # TODO 验证集限制了大小
                         break
 
                     val_iou = mean(val_ious)

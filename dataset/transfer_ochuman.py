@@ -3,7 +3,7 @@ import numpy as np
 import tqdm
 from shutil import copyfile
 from ochumanApi.ochuman import OCHuman
-from dataset.common_dataset_api import key_combine, BODY_PART_CHOICES
+from ymtools.common_dataset_api import key_combine, BODY_PART_CHOICES
 import ochumanApi.vis as vistool
 from ochumanApi.ochuman import Poly2Mask
 import json
@@ -222,13 +222,10 @@ def transfer_ochuman(ann_path, img_dir, save_dir):
         with open(os.path.join(data_dir, name+'.json'), 'w') as f:
             f.write(nd_json)
 
-        # print()
-
-    print()
 
 
 if __name__ == '__main__':
-    from debug_function import *
+    from ymtools.debug_function import *
     transfer_ochuman('/Users/yanmiao/yanmiao/data/ochuman/annotations/ochuman.json',
                      '/Users/yanmiao/yanmiao/data/ochuman/images',
                      '/Users/yanmiao/yanmiao/data-common/ochuman')

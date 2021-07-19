@@ -1,10 +1,10 @@
-from dataset.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
-from dataset.dataset_visual import mask2box, draw_box, draw_keypoint, draw_mask, draw_label
+from ymtools.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
+from ymtools.dataset_visual import mask2box, draw_box, draw_keypoint, draw_mask, draw_label
 import imgaug as ia
 from imgaug import augmenters as iaa
 import cv2 as cv
 import time
-from debug_function import *
+from ymtools.debug_function import *
 
 ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
                     "left_shoulder", "left_elbow", "left_wrist",
@@ -80,7 +80,7 @@ def test1(dataset_dir):
             left = -x1 + pad
             right = x2 - iw + pad
             top = -y1 + pad
-            bottom = y2 - ih +pad
+            bottom = y2 - ih + pad
             # aw = int((x2-x1)*0.2)
             # ah = int((y2-y1)*0.2)
             aw = 0
@@ -128,7 +128,8 @@ def show_dataset(dataset_dir):
     aug = iaa.Noop()
 
     for ann in common_ann_loader(dataset_dir):
-        common_choice(ann, key_choices={'image', 'mix', 'segment_mask'})
+        common_choice(ann, key_choices={
+                      'image', 'mix', 'segment_mask', 'meta', 'object'})
 
         def filter(result):
             yield True
@@ -142,25 +143,42 @@ def show_dataset(dataset_dir):
         common_aug(ann, aug)
 
         image = ann[key_combine('image', 'image')]
+        origin_image_path = ann[key_combine(
+            'meta', 'other')]['origin_image_path']
 
         h, w = image.shape[:2]
-        window_name = f'image | mix | mask   height:{h} width:{w}   time:{int((time.time() - start)*1000)}'
+        window_name = f'image | mix | mask   height:{h} width:{w} origin:{origin_image_path}  time:{int((time.time() - start)*1000)}'
 
-        mix = ann[key_combine('mix', 'image')]
+        # mix = ann[key_combine('mix', 'image')]
 
         mask = ann[key_combine('segment_mask', 'mask')]
+
+        mix = image.copy()
+
         mask = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
+
+        objs = ann[key_combine('object', 'sub_list')]
+
+        for obj in objs:
+            common_transfer(obj)
+            if key_combine('body_keypoint', 'sub_dict') in obj:
+                body_keypoint = obj[key_combine('body_keypoint', 'sub_dict')]
+                draw_keypoint(mix, body_keypoint, labeled=True)
+
+            instance_mask = obj[key_combine('instance_mask', 'mask')]
+
+            draw_mask(mix,instance_mask)
 
         imshow(np.concatenate([image, mix, mask], axis=1), window_name)
 
 
 if __name__ == '__main__':
 
-    # dataset_dir = '/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian'
-    dataset_dir = '/Users/yanmiao/yanmiao/data-common/ochuman'
+    dataset_dir = '/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian'
+    # dataset_dir = '/Users/yanmiao/yanmiao/data-common/ochuman'
     # dataset_dir = '/Users/yanmiao/yanmiao/data-common/supervisely'
     # dataset_dir = '/Users/yanmiao/yanmiao/data-common/coco'
 
-    # show_dataset(dataset_dir)
-    test1(dataset_dir)
+    show_dataset(dataset_dir)
+    # test1(dataset_dir)
     # test2()
