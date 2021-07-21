@@ -73,7 +73,7 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
                 region = heatmap[y_min:y_max, x_min:x_max]
                 region[idxs] = e_table[idxs]
 
-                show_region = heatmap_show[y_min:y_max, x_min:x_max]
+                show_region = heatmap_show[y_min:y_max+1, x_min:x_max+1]
                 color_region = np.zeros((*region.shape, 3), np.float32)
                 color_region[:] = get_color(i0, len(ORDER_PART_NAMES))
                 color_region = (e_table[:, :, np.newaxis]
