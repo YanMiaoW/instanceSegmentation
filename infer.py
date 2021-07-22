@@ -6,6 +6,7 @@ import cv2 as cv
 import os
 from ymlib.dataset_visual import crop_pad
 from instanceSegmentation.model.segment import Segment
+import torchvision.transforms as transforms
 
 
 def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/not_exist') -> nn.Module:
@@ -39,14 +40,23 @@ def infer_instance(model: Segment, image: np.ndarray, segment_mask: np.ndarray, 
         image = cv.copyMakeBorder(image, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
 
     # 添加预测
-    image = 
-    input_ = torch.cat([x, heatmaps], dim=1)
-        out = self.forward(inp)
-        return torch.sigmoid(out)
+    image_transform = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+    ])
+    
+    mask_transform = transforms.ToTensor()
 
+    image_tensor = image_transform(image)
+    mask_tensor = mask_transform(segment_mask)
 
-    instance_mask = model.test(image, segment_mask)
+    input_tensor = torch.cat([image_tensor, mask_tensor], dim=1)
+    input_tensor = input_tensor.to(model.device)
 
+    output_tensor = model(input_tensor)
+    instance_mask= torch.sigmoid(output_tensor)
+
+    # mask转换
     if bolder != 0:
         instance_mask = crop_pad(instance_mask, bias_xyxy=[bolder, bolder, -bolder, -bolder])
 
