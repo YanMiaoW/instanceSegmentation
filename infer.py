@@ -155,6 +155,7 @@ def infer_instance(model: Segment,
 
     paf_tensors = [paf_transfrom(paf) for paf in pafs]
     paf_tensor = torch.cat(paf_tensors, dim=0)
+    
     input_tensor = torch.cat([image_tensor, paf_tensor], dim=1)
 
     input_tensor = input_tensor.to(model.device)
