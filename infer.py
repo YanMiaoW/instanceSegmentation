@@ -44,13 +44,14 @@ def infer_instance(model: Segment, image: np.ndarray, segment_mask: np.ndarray, 
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
     ])
-    
+
     mask_transform = transforms.ToTensor()
 
     image_tensor = image_transform(image)
     mask_tensor = mask_transform(segment_mask)
 
     input_tensor = torch.cat([image_tensor, mask_tensor], dim=1)
+    
     input_tensor = input_tensor.to(model.device)
 
     output_tensor = model(input_tensor)
