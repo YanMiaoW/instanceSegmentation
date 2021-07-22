@@ -16,6 +16,7 @@ ORDER_PART_NAMES = [
     "right_ankle", "left_hip", "left_knee", "left_ankle", 'right_ear', 'left_ear', 'nose', 'right_eye', 'left_eye'
 ]
 
+
 def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
 
     r = math.sqrt(math.log(threshold) * (-sigma**2))

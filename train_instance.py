@@ -372,7 +372,7 @@ if __name__ == "__main__":
                     for j0, (vimage_ts, vmask_ts, vheatmap_ts, vresults) in enumerate(valloader):
                         vimage_ts, vmask_ts = vimage_ts.to(device), vmask_ts.to(device)
                         vheatmap_ts = vheatmap_ts.to(device)
-                        
+
                         vinput_ts = torch.cat([image_ts, heatmap_ts], dim=1)
                         voutput_ts = model(vinput_ts)
                         voutmask_ts = torch.sigmoid(voutput_ts)
