@@ -149,7 +149,6 @@ def infer_instance(model: Segment,
     mask_transform = transforms.ToTensor()
     paf_transfrom = transforms.ToTensor()
 
-
     image_tensor = image_transform(image)
     # TODO 添加mask训练
     segment_mask_tensor = mask_transform(segment_mask)
@@ -157,7 +156,6 @@ def infer_instance(model: Segment,
     paf_tensors = [paf_transfrom(paf) for paf in pafs]
     paf_tensor = torch.cat(paf_tensors, dim=0)
     input_tensor = torch.cat([image_tensor, paf_tensor], dim=1)
-
 
     input_tensor = input_tensor.to(model.device)
 
