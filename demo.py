@@ -10,12 +10,13 @@ import glob
 import sys
 
 from ymlib.debug_function import *
-from ymlib.dataset_visual import mask2box, draw_keypoint, draw_mask, index2color, draw_box
+from ymlib.dataset_visual import mask2box, draw_keypoint, draw_mask, index2color, draw_box, xywh2xyxy
 from ymlib.common import path_decompose, get_minimum_memory_footprint_id, get_git_branch_name
 
 from tsai.face import get_face_detect_model, infer_face_detect
 from tsai.segment import get_segment_model, infer_segment
 from other.LightPoseEstimation.infer import get_pose_model, infer_pose
+from instanceSegmentation.infer import get_instance_model, infer_instance
 
 
 def parse_args():
@@ -29,23 +30,6 @@ def parse_args():
 
     args = parser.parse_args()
     return args
-
-
-def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/not_exist') -> nn.Module:
-    from model.segment import Segment
-    instance_model = Segment(3)
-    if os.path.exists(checkpoint_path):
-        print(f'loading model from {checkpoint_path}')
-        checkpoint = torch.load(checkpoint_path)
-        instance_model.load_state_dict(checkpoint["state_dict"])
-    else:
-        print('instance_model checkpoint is not found')
-
-    return instance_model
-
-
-def infer_instance(model, segment_mask, keypoint, image):
-    return
 
 
 def contour2mask(contours, hierarchy, index, shape):
@@ -97,7 +81,7 @@ if __name__ == "__main__":
     instance_model = instance_model.to(device)
     pose_model = pose_model.to(device)
 
-    face_detect_model = face_detect_model.model.to(device)
+    face_detect_model = face_detect_model.to(device)
 
     # 遍历预测图片
     print(f'loading image from {args.image_dir}')
@@ -110,7 +94,9 @@ if __name__ == "__main__":
     print(f'save result mix to {save_dir}')
 
     for i0, filepath in enumerate(tqdm.tqdm(image_paths)):
-        filepath = '/Users/yanmiao/yanmiao/data-common/supervisely/image/05411.png'
+        if i0 != 13:
+            continue
+        # filepath = '/Users/yanmiao/yanmiao/data-common/supervisely/image/05411.png'
 
         _, basename, _ = path_decompose(filepath)
         result_path = os.path.join(save_dir, f'{basename}.jpg')
@@ -120,42 +106,62 @@ if __name__ == "__main__":
 
         image = cv.imread(filepath)
         image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+        h, w = image.shape[:2]
         mix = image.copy()
 
-        # seg_mask = infer_seg(seg_model, image)
+        segment_mask = infer_segment(segment_model, image)
+        # imshow(segment_mask)
 
-        seg_path = '/Users/yanmiao/yanmiao/data-common/supervisely/segment_mask/05411.png'
-        seg_mask = cv.imread(seg_path, cv.IMREAD_GRAYSCALE)
+        # segment_path = '/Users/yanmiao/yanmiao/data-common/supervisely/segment_mask/05411.png'
+        # segment_mask = cv.imread(segment_path, cv.IMREAD_GRAYSCALE)
 
-        _, seg_mask_binary = cv.threshold(seg_mask, 127, 255, cv.THRESH_BINARY)
-        contours, hierarchy = cv.findContours(seg_mask_binary, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
+        _, segment_mask_binary = cv.threshold(segment_mask, 127, 255, cv.THRESH_BINARY)
+        contours, hierarchy = cv.findContours(segment_mask_binary, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
+        instance_num = (hierarchy[0, :, 3] == -1).sum()
+
+        k0 = 0
+
+        #TODO contours封装成api
         for j0, (contour, parent) in enumerate(zip(contours, hierarchy[0, :, 3])):
             # 只处理最外层
             if parent != -1:
                 continue
 
             # 获取最外侧外接框
-            box = cv.boundingRect(contour)
+            rect = cv.boundingRect(contour)
+            rw, rh = rect[2:]
 
-            faces = infer_face_detect(face_detect_model, image, box)
+            if rw < w * 0.1 or rh < h * 0.1:
+                continue
 
-            # 获取mask
-            mask = contour2mask(contours, hierarchy, j0, seg_mask.shape)
+            rect = xywh2xyxy(rect)
 
-            
+            draw_box(mix, rect)
 
+            faces = infer_face_detect(face_detect_model, image, mask=segment_mask, rect=rect, bolder=16)
 
-            # draw_mask(mix, mask, index2color(j0, len(masks)))
+            if len(faces) <= 1:
+                # 获取mask
+                mask = contour2mask(contours, hierarchy, j0, segment_mask.shape)
 
-        # 
-        # if faces is not None:
-        #     for j0, box_xyxy in enumerate(faces):
-        #         draw_box(mix, box_xyxy, index2color(j0, len(faces)))
+                draw_mask(mix, mask, index2color(j0, instance_num))
 
-        # poses = infer_pose(pose_model, image)
-        # for keypoints in poses:
-        #     draw_keypoint(mix, keypoints, labeled=True)
+                for k0, box_xyxy in enumerate(faces):
+                    draw_box(mix, box_xyxy, index2color(k0, len(faces)))
 
-        imshow(mix)
-        # cv.imwrite(result_path, mix)
+                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+
+                for keypoints in poses:
+                    draw_keypoint(mix, keypoints, labeled=True)
+
+            elif len(faces) >= 2:
+                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+        
+                for keypoint in poses:
+                    draw_keypoint(mix, keypoints, labeled=True)
+                    instance_mask = infer_instance(instance_model, segment_mask, rect=rect, bolder=16)
+                    draw_mask(mix, instance_mask, index2color(k0, 10))
+                    k0 = k0 + 1 if k0 < 10 else 0
+
+        imshow(mix, window_name=filepath)
