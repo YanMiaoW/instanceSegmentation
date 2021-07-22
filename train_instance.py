@@ -528,10 +528,10 @@ if __name__ == "__main__":
                     def tensor2mask(tensor):
                         return (tensor[0]*255).cpu().detach().numpy().astype(np.uint8)
 
-                    # 打印iou
                     def tensors_mean_iou(outmask_ts, mask_ts):
                         return mean(mask_iou(tensor2mask(outmask_t), tensor2mask(mask_t)) for outmask_t, mask_t in zip(outmask_ts, mask_ts))
 
+                    # 打印iou
                     train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
 
                     val_ious = []

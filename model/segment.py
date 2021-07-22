@@ -532,8 +532,7 @@ class Segment(nn.Module):
         inp = torch.cat([x, heatmaps,pafs], dim=1)
         out = self.forward(inp)
         return torch.sigmoid(out)
-
-
+        
 if __name__ == "__main__":
     from ymlib.debug_function import *
     m = Segment(3)
