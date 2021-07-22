@@ -162,7 +162,7 @@ if __name__ == "__main__":
 
                 for keypoint in poses:
                     draw_keypoint(mix, keypoints, labeled=True)
-                    heatmaps, heatmap_show = keypoint2heatmaps(keypoint)
+                    heatmaps, heatmap_show = keypoint2heatmaps(keypoint, (h, w))
                     instance_mask = infer_instance(instance_model, segment_mask, heatmaps, rect=rect, bolder=16)
                     draw_mask(mix, instance_mask, index2color(k0, 10))
                     k0 = k0 + 1 if k0 < 10 else 0
