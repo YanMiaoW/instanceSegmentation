@@ -15,166 +15,16 @@ from imgaug import augmenters as iaa
 import imgaug as ia
 
 from ymlib.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
-from ymlib.dataset_visual import mask2box, draw_mask
+from ymlib.dataset_visual import mask2box, draw_mask, index2color
 from ymlib.common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, get_user_hostname, mean
 from ymlib.eval_function import mask_iou
 from ymlib.debug_function import *
 
 from model.segment import Segment
-
-ORDER_PART_NAMES = ["right_shoulder", "right_elbow", "right_wrist",
-                    "left_shoulder", "left_elbow", "left_wrist",
-                    "right_hip", "right_knee", "right_ankle",
-                    "left_hip", "left_knee", "left_ankle",
-                    'right_ear', 'right_eye',
-                    'left_eye', 'left_ear',
-                    'nose', ]
-
-CONNECTION_PARTS = [
-    ['right_shoulder', 'right_elbow'],
-    ['right_elbow', 'right_wrist'],
-    ['right_hip', 'right_knee'],
-    ['right_knee', 'right_ankle'],
-    ['right_ear', 'nose'],
-    ['right_eye', 'nose'],
-
-    ['left_shoulder', 'left_elbow'],
-    ['left_elbow', 'left_wrist'],
-    ['left_hip', 'left_knee'],
-    ['left_knee', 'left_ankle'],
-    ['left_ear', 'nose'],
-    ['left_eye', 'nose'],
-
-    ['right_ear', 'left_eye'],
-]
-
-
-def get_color(i, length):
-    v = int((255 / length / 2) * (2 * i + 1))
-    return cv.applyColorMap(np.array([[v]], dtype=np.uint8), cv.COLORMAP_TURBO)[0][0]
-
-
-def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
-
-    r = math.sqrt(math.log(threshold)*(-sigma**2))
-
-    heatmaps = []
-
-    heatmap_show = np.zeros((*shape, 3), dtype=np.uint8)
-
-    for i0, key in enumerate(ORDER_PART_NAMES):
-
-        heatmap = np.zeros(shape, dtype=np.float32)
-
-        key_type = key_combine(key, 'sub_dict')
-
-        if key_type in keypoint and\
-            keypoint[key_type][
-                key_combine('status', 'keypoint_status')] == 'vis':
-
-            x, y = keypoint[key_type][key_combine('point', 'point_xy')]
-            h, w = shape
-
-            if x > 0 and x < w and y > 0 and y < h:
-
-                x_min = max(0, int(x - r))
-                x_max = min(w-1, int(x+r+1))
-                y_min = max(0, int(y - r))
-                y_max = min(h-1, int(y+r+1))
-
-                xs = np.arange(x_min, x_max)
-                ys = np.arange(y_min, y_max)[:, np.newaxis]
-
-                e_table = np.exp(-((xs - x)**2+(ys - y)**2) / sigma**2)
-
-                idxs = np.where(e_table > threshold)
-
-                region = heatmap[y_min:y_max, x_min:x_max]
-                region[idxs] = e_table[idxs]
-
-                show_region = heatmap_show[y_min:y_max+1, x_min:x_max+1]
-                color_region = np.zeros((*region.shape, 3), np.float32)
-                color_region[:] = get_color(i0, len(ORDER_PART_NAMES))
-                color_region = (e_table[:, :, np.newaxis]
-                                * color_region).astype(np.uint8)
-                show_region[:] = np.max(
-                    np.stack((show_region, color_region)), axis=0)
-
-        heatmaps.append(heatmap)
-
-    return heatmaps, heatmap_show
-
-
-def connection2pafs(keypoint, shape, sigma=10):
-
-    pafs = []
-
-    paf_show = np.zeros((*shape, 3), dtype=np.uint8)
-
-    for i0, (part1, part2) in enumerate(CONNECTION_PARTS):
-
-        pafx = np.zeros(shape, dtype=np.float32)
-        pafy = np.zeros(shape, dtype=np.float32)
-
-        part1 = key_combine(part1, 'sub_dict')
-        part2 = key_combine(part2, 'sub_dict')
-        status = key_combine('status', 'keypoint_status')
-        point = key_combine('point', 'point_xy')
-
-        if part1 in keypoint and\
-                keypoint[part1][status] == 'vis' and\
-                part2 in keypoint and\
-                keypoint[part2][status] == 'vis':
-
-            x1, y1 = keypoint[part1][point]
-            x2, y2 = keypoint[part2][point]
-
-            v0 = np.array([x2-x1, y2-y1])
-            v0_norm = np.linalg.norm(v0)
-
-            if v0_norm == 0:
-                continue
-
-            h, w = shape
-            x_min = max(int(round(min(x1, x2) - sigma)), 0)
-            x_max = min(int(round(max(x1, x2) + sigma)), w-1)
-            y_min = max(int(round(min(y1, y2) - sigma)), 0)
-            y_max = min(int(round(max(y1, y2) + sigma)), h-1)
-
-            xs, ys = np.meshgrid(np.arange(x_min, x_max),
-                                 np.arange(y_min, y_max))
-
-            vs = np.stack((xs.flatten() - x1, ys.flatten() - y1), axis=1)
-
-            # |B|cos = |A||B|cos / |A|
-            l = np.dot(vs, v0) / v0_norm
-            c1 = (l >= 0) & (l <= v0_norm)
-
-            # |B|sin = |A||B|sin / |A|
-            c2 = abs(np.cross(vs, v0) / v0_norm) <= sigma
-
-            idxs = c1 & c2
-
-            idxs = idxs.reshape(xs.shape)
-
-            region = pafx[y_min:y_max, x_min:x_max]
-            region[idxs] = v0[0] / v0_norm
-            region[idxs] = v0[1] / v0_norm
-
-            show_region = paf_show[y_min:y_max, x_min:x_max]
-            color_region = np.zeros((*region.shape, 3), np.float32)
-            color_region[idxs] = get_color(i0, len(CONNECTION_PARTS))
-            show_region[:] = np.max(
-                np.stack((show_region, color_region)), axis=0)
-
-        pafs.append(pafx)
-        pafs.append(pafy)
-
-    return pafs, paf_show
+from instanceSegmentation.infer import ORDER_PART_NAMES, keypoint2heatmaps
 
 
 class InstanceCommonDataset(Dataset):
-
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
         self.test = test
@@ -182,28 +32,20 @@ class InstanceCommonDataset(Dataset):
         out_size = (480, 480)
         self.out_size = out_size
 
-        self.img_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
+        self.img_transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
 
-        self.mask_transform = transforms.Compose(
-            [transforms.ToTensor()]
-        )
+        self.mask_transform = transforms.Compose([transforms.ToTensor()])
 
-        self.heatmap_transfrom = transforms.Compose(
-            [
-                transforms.ToTensor(),
-            ]
-        )
+        self.heatmap_transfrom = transforms.Compose([
+            transforms.ToTensor(),
+        ])
 
-        self.paf_transfrom = transforms.Compose(
-            [
-                transforms.ToTensor(),
-            ]
-        )
+        self.paf_transfrom = transforms.Compose([
+            transforms.ToTensor(),
+        ])
 
         self.results = []
 
@@ -228,7 +70,7 @@ class InstanceCommonDataset(Dataset):
 
                     yield 'box' in result
                     x0, y0, x1, y1 = result['box']
-                    bw, bh = x1-x0, y1-y0
+                    bw, bh = x1 - x0, y1 - y0
                     yield bw > 50 and bh > 50
 
                 if not common_filter(obj, filter):
@@ -236,8 +78,7 @@ class InstanceCommonDataset(Dataset):
 
                 obj[key_combine('image', 'image_path')] = image_path
 
-                common_choice(obj, key_choices={
-                              'instance_mask', 'image', 'box', 'body_keypoint'})
+                common_choice(obj, key_choices={'instance_mask', 'image', 'box', 'body_keypoint'})
 
                 self.results.append(obj)
 
@@ -253,12 +94,13 @@ class InstanceCommonDataset(Dataset):
 
         # 增强
 
-        def sometimes(x): return iaa.Sometimes(0.6, x)
+        def sometimes(x):
+            return iaa.Sometimes(0.6, x)
 
         ih, iw = image.shape[:2]
         x0, y0, x1, y1 = box
-        box_center_x = (x0+x1)/2
-        box_center_y = (y0+y1)/2
+        box_center_x = (x0 + x1) / 2
+        box_center_y = (y0 + y1) / 2
         tx = int(iw / 2 - box_center_x)
         ty = int(ih / 2 - box_center_y)
 
@@ -266,7 +108,10 @@ class InstanceCommonDataset(Dataset):
             aug = iaa.Affine(translate_px={"x": (tx, tx), "y": (ty, ty)})
         else:
             aug = iaa.Sequential([
-                iaa.Affine(translate_px={"x": (tx, tx), "y": (ty, ty)}),
+                iaa.Affine(translate_px={
+                    "x": (tx, tx),
+                    "y": (ty, ty)
+                }),
                 # sometimes(
                 #     iaa.Affine(rotate=(-25, 25)),
                 # ),
@@ -291,23 +136,25 @@ class InstanceCommonDataset(Dataset):
 
         if self.test:
             aug = iaa.Sequential([
-                iaa.CropAndPad(((top, top), (right, right),
-                                (bottom, bottom), (left, left))),
-                iaa.Resize(
-                    {"height": self.out_size[0], "width": self.out_size[1]})
+                iaa.CropAndPad(((top, top), (right, right), (bottom, bottom), (left, left))),
+                iaa.Resize({
+                    "height": self.out_size[0],
+                    "width": self.out_size[1]
+                })
             ])
         else:
             aug = iaa.Sequential([
-                iaa.CropAndPad(((top, top), (right, right),
-                                (bottom, bottom), (left, left))),
+                iaa.CropAndPad(((top, top), (right, right), (bottom, bottom), (left, left))),
                 # iaa.CropAndPad(((top-ah, top+ah), (right-aw, right+aw),
                 #                 (bottom-ah, bottom+ah), (left-aw, left+aw))),
                 # sometimes(iaa.LinearContrast((0.75, 1.5))),
                 # sometimes(iaa.AdditiveGaussianNoise(
                 #     loc=0, scale=(0.0, 0.05*255), per_channel=0.5)),
                 # sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
-                iaa.Resize(
-                    {"height": self.out_size[0], "width": self.out_size[1]})
+                iaa.Resize({
+                    "height": self.out_size[0],
+                    "width": self.out_size[1]
+                })
             ])
 
         common_aug(result, aug, r=True)
@@ -326,11 +173,9 @@ class InstanceCommonDataset(Dataset):
 
         image_tensor = self.img_transform(image)
         mask_tensor = self.mask_transform(mask)
-        heatmap_tensors = [self.heatmap_transfrom(
-            heatmap) for heatmap in heatmaps]
+        heatmap_tensors = [self.heatmap_transfrom(heatmap) for heatmap in heatmaps]
         heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
-        paf_tensors = [self.paf_transfrom(
-            paf) for paf in pafs]
+        paf_tensors = [self.paf_transfrom(paf) for paf in pafs]
         paf_tensor = torch.cat(paf_tensors, dim=0)
 
         out = {}
@@ -407,17 +252,13 @@ if __name__ == "__main__":
 
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
-    trainloader = DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn
-    )
+    trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn)
 
     print('load val dataset from ' + args.train_dataset_dir)
 
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
-    valloader = DataLoader(
-        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
-    )
+    valloader = DataLoader(valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn)
 
     # 模型，优化器，损失
     model = Segment(3 + len(CONNECTION_PARTS) * 2 + len(ORDER_PART_NAMES))
@@ -439,8 +280,7 @@ if __name__ == "__main__":
     if hasattr(args, 'checkpoint_save_path'):
         branch_best_path = args.checkpoint_save_path
     else:
-        branch_best_path = os.path.join(
-            args.checkpoint_dir, f'{branch_name}_best.pth')
+        branch_best_path = os.path.join(args.checkpoint_dir, f'{branch_name}_best.pth')
 
     if os.path.exists(branch_best_path):
         checkpoint = torch.load(branch_best_path)
@@ -513,11 +353,9 @@ if __name__ == "__main__":
 
             # 打印训练loss
             if i0 % args.show_iter == args.show_iter - 1:
-                print(
-                    f" [epoch {epoch}]"
-                    f" [{i0*args.batch_size}/{len(trainset)}]"
-                    f" [loss: {round(sum(loss_total)/len(loss_total),6)}]"
-                )
+                print(f" [epoch {epoch}]"
+                      f" [{i0*args.batch_size}/{len(trainset)}]"
+                      f" [loss: {round(sum(loss_total)/len(loss_total),6)}]")
                 loss_total = []  # 清空loss
 
             # 预测
@@ -526,37 +364,33 @@ if __name__ == "__main__":
                     model.eval()
 
                     def tensor2mask(tensor):
-                        return (tensor[0]*255).cpu().detach().numpy().astype(np.uint8)
+                        return (tensor[0] * 255).cpu().detach().numpy().astype(np.uint8)
 
                     def tensors_mean_iou(outmask_ts, mask_ts):
-                        return mean(mask_iou(tensor2mask(outmask_t), tensor2mask(mask_t)) for outmask_t, mask_t in zip(outmask_ts, mask_ts))
+                        return mean(
+                            mask_iou(tensor2mask(outmask_t), tensor2mask(mask_t))
+                            for outmask_t, mask_t in zip(outmask_ts, mask_ts))
 
                     # 打印iou
                     train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
 
                     val_ious = []
                     for j0, (vimage_ts, vmask_ts, vheatmap_ts, vpaf_ts, vresults) in enumerate(valloader):
-                        vimage_ts, vmask_ts = vimage_ts.to(
-                            device), vmask_ts.to(device)
+                        vimage_ts, vmask_ts = vimage_ts.to(device), vmask_ts.to(device)
                         vheatmap_ts = vheatmap_ts.to(device)
                         vpaf_ts = vpaf_ts.to(device)
-                        voutmask_ts = model.train_batch(
-                            vimage_ts, vheatmap_ts, vpaf_ts)
-                        val_ious.append(tensors_mean_iou(
-                            voutmask_ts, vmask_ts))
+                        voutmask_ts = model.train_batch(vimage_ts, vheatmap_ts, vpaf_ts)
+                        val_ious.append(tensors_mean_iou(voutmask_ts, vmask_ts))
                         # TODO 验证集限制了大小
                         break
 
                     val_iou = mean(val_ious)
 
                     print(
-                        f"{branch_name}",
-                        f" {device}",
-                        f" [epoch {epoch}]"
+                        f"{branch_name}", f" {device}", f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
                         f" [train_batch_iou: {round(train_batch_iou,6)}]"
-                        f" [val_iou: {round(val_iou,6)}]"
-                    )
+                        f" [val_iou: {round(val_iou,6)}]")
 
                     # 可视化
                     if show_img_tag:
@@ -580,10 +414,8 @@ if __name__ == "__main__":
                         vmix = vimage.copy()
                         draw_mask(vmix, voutmask)
 
-                        outmask_show = cv.applyColorMap(
-                            outmask, cv.COLORMAP_HOT)
-                        voutmask_show = cv.applyColorMap(
-                            voutmask, cv.COLORMAP_HOT)
+                        outmask_show = cv.applyColorMap(outmask, cv.COLORMAP_HOT)
+                        voutmask_show = cv.applyColorMap(voutmask, cv.COLORMAP_HOT)
 
                         # 蓝图变红图
                         # train_mask3 = cv.cvtColor(
@@ -593,22 +425,18 @@ if __name__ == "__main__":
                         mask3 = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
                         vmask3 = cv.cvtColor(vmask, cv.COLOR_GRAY2RGB)
 
-                        train_show_img = np.concatenate(
-                            [image, mask3, heatmap_show, paf_show, mix, outmask_show], axis=1)
+                        train_show_img = np.concatenate([image, mask3, heatmap_show, paf_show, mix, outmask_show], axis=1)
 
-                        val_show_img = np.concatenate(
-                            [vimage, vmask3, vheatmap_show, vpaf_show, vmix, voutmask_show], axis=1)
+                        val_show_img = np.concatenate([vimage, vmask3, vheatmap_show, vpaf_show, vmix, voutmask_show], axis=1)
 
-                        show_img = np.concatenate(
-                            [train_show_img, val_show_img], axis=0)
+                        show_img = np.concatenate([train_show_img, val_show_img], axis=0)
 
                         show_img = cv.resize(show_img, (0, 0), fx=0.5, fy=0.5)
                         show_img = cv.cvtColor(show_img, cv.COLOR_RGB2BGR)
 
                     # 模型重启
-                    if iou_max-val_iou > 0.3:
-                        print(
-                            f'val_iou too low, reload checkpoint from {branch_best_path}')
+                    if iou_max - val_iou > 0.3:
+                        print(f'val_iou too low, reload checkpoint from {branch_best_path}')
                         load_checkpoint(branch_best_path)
                         epoch = start_epoch - 1
                         break

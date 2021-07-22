@@ -4,13 +4,70 @@ import torchvision
 import numpy as np
 import cv2 as cv
 import os
-from ymlib.dataset_visual import crop_pad
+import math
+from ymlib.common_dataset_api import key_combine
+from ymlib.dataset_visual import crop_pad, index2color
 from instanceSegmentation.model.segment import Segment
 import torchvision.transforms as transforms
+from functools import partial
+
+ORDER_PART_NAMES = [
+    "right_shoulder", "right_elbow", "right_wrist", "left_shoulder", "left_elbow", "left_wrist", "right_hip", "right_knee",
+    "right_ankle", "left_hip", "left_knee", "left_ankle", 'right_ear', 'left_ear', 'nose', 'right_eye', 'left_eye'
+]
+
+
+def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
+
+    r = math.sqrt(math.log(threshold) * (-sigma**2))
+
+    heatmaps = []
+
+    heatmap_show = np.zeros((*shape, 3), dtype=np.uint8)
+
+    for i0, key in enumerate(ORDER_PART_NAMES):
+
+        heatmap = np.zeros(shape, dtype=np.float32)
+
+        key_type = key_combine(key, 'sub_dict')
+
+        if key_type in keypoint and\
+            keypoint[key_type][
+                key_combine('status', 'keypoint_status')] == 'vis':
+
+            x, y = keypoint[key_type][key_combine('point', 'point_xy')]
+            h, w = shape
+
+            if x > 0 and x < w and y > 0 and y < h:
+
+                x_min = max(0, int(x - r))
+                x_max = min(w, int(x + r + 1))
+                y_min = max(0, int(y - r))
+                y_max = min(h, int(y + r + 1))
+
+                xs = np.arange(x_min, x_max)
+                ys = np.arange(y_min, y_max)[:, np.newaxis]
+
+                e_table = np.exp(-((xs - x)**2 + (ys - y)**2) / sigma**2)
+
+                idxs = np.where(e_table > threshold)
+
+                region = heatmap[y_min:y_max, x_min:x_max]
+                region[idxs] = e_table[idxs]
+
+                show_region = heatmap_show[y_min:y_max, x_min:x_max]
+                color_region = np.zeros((*region.shape, 3), np.float32)
+                color_region[:] = index2color(i0, len(ORDER_PART_NAMES))
+                color_region = (e_table[:, :, np.newaxis] * color_region).astype(np.uint8)
+                show_region[:] = np.max(np.stack((show_region, color_region)), axis=0)
+
+        heatmaps.append(heatmap)
+
+    return heatmaps, heatmap_show
 
 
 def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/not_exist') -> nn.Module:
-    instance_model = Segment(3)
+    instance_model = Segment(3 + len(ORDER_PART_NAMES))
     if os.path.exists(checkpoint_path):
         print(f'loading model from {checkpoint_path}')
         checkpoint = torch.load(checkpoint_path)
@@ -21,17 +78,33 @@ def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/not_ex
     return instance_model
 
 
-def infer_instance(model: Segment, image: np.ndarray, segment_mask: np.ndarray, rect: list = None, pad=0, bolder=0) -> np.ndarray:
+def infer_instance(model: Segment,
+                   image: np.ndarray,
+                   segment_mask: np.ndarray,
+                   heatmaps: list,
+                   mask=None,
+                   rect: list = None,
+                   pad=0,
+                   bolder=0) -> np.ndarray:
+
     h, w = image.shape[:2]
     if rect is None:
         rect = [0, 0, w, h]
     x1, y1 = rect[:2]
 
-    image = crop_pad(image, xyxy=rect, bias_xyxy=[-pad, -pad, pad, pad])
+    crop_pad_ = partial(crop_pad, xyxy=rect, bias_xyxy=[-pad, -pad, pad, pad])
 
-    if segment_mask is not None:
-        segment_mask = crop_pad(segment_mask, xyxy=rect, bias_xyxy=[-pad, -pad, pad, pad])
-        image = np.bitwise_and(image, segment_mask[:, :, np.newaxis])
+    image = crop_pad_(image)
+
+    segment_mask = crop_pad_(segment_mask)
+
+    heatmaps = [crop_pad_(heatmap) for heatmap in heatmaps]
+
+    if mask is not None:
+        mask = crop_pad_(mask)
+        image = np.bitwise_and(image, mask[:, :, np.newaxis])
+        segment_mask = np.bitwise_and(segment_mask, mask)
+        heatmaps = [np.bitwise_and(heatmap, mask) for heatmap in heatmaps]
 
     if min(*image.shape[:2]) < 50:
         return [], None, None
@@ -46,16 +119,21 @@ def infer_instance(model: Segment, image: np.ndarray, segment_mask: np.ndarray, 
     ])
 
     mask_transform = transforms.ToTensor()
+    heatmap_transfrom = transforms.ToTensor()
 
     image_tensor = image_transform(image)
-    mask_tensor = mask_transform(segment_mask)
+    # TODO 添加mask训练
+    segment_mask_tensor = mask_transform(segment_mask)
 
-    input_tensor = torch.cat([image_tensor, mask_tensor], dim=1)
-    
+    heatmap_tensors = [heatmap_transfrom(heatmap) for heatmap in heatmaps]
+    heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
+
+    input_tensor = torch.cat([image_tensor, heatmap_tensor], dim=1)
+
     input_tensor = input_tensor.to(model.device)
 
     output_tensor = model(input_tensor)
-    instance_mask= torch.sigmoid(output_tensor)
+    instance_mask = torch.sigmoid(output_tensor)
 
     # mask转换
     if bolder != 0:
