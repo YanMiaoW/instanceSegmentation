@@ -36,12 +36,17 @@ class InstanceCommonDataset(Dataset):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
+<<<<<<< HEAD
 
         self.mask_transform = transforms.Compose([transforms.ToTensor()])
 
         self.heatmap_transfrom = transforms.Compose([
             transforms.ToTensor(),
         ])
+=======
+
+        self.mask_transform = transforms.Compose([transforms.ToTensor()])
+>>>>>>> origin
 
         self.results = []
 
@@ -74,7 +79,11 @@ class InstanceCommonDataset(Dataset):
 
                 obj[key_combine('image', 'image_path')] = image_path
 
+<<<<<<< HEAD
                 common_choice(obj, key_choices={'instance_mask', 'image', 'box', 'body_keypoint'})
+=======
+                common_choice(obj, key_choices={'instance_mask', 'image', 'box'})
+>>>>>>> origin
 
                 self.results.append(obj)
 
@@ -378,7 +387,7 @@ if __name__ == "__main__":
                         voutmask_ts = torch.sigmoid(voutput_ts)
 
                         val_ious.append(tensors_mean_iou(voutmask_ts, vmask_ts))
-                        # TODO
+                        # TODO 验证集限制了大小
                         break
 
                     val_iou = mean(val_ious)

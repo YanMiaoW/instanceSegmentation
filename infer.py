@@ -86,7 +86,6 @@ def infer_instance(model: Segment,
                    rect: list = None,
                    pad=0,
                    bolder=0) -> np.ndarray:
-
     h, w = image.shape[:2]
     if rect is None:
         rect = [0, 0, w, h]
@@ -149,9 +148,9 @@ def infer_instance(model: Segment,
     instance_mask = torch.sigmoid(output_tensor)
     instance_mask = (instance_mask[0][0] * 255).detach().numpy().astype(np.uint8)
 
-     # 恢复mask
+    # 恢复mask
     instance_mask = cv.resize(instance_mask, cut_size[::-1])
-   
+
     if bolder != 0:
         instance_mask = crop_pad(instance_mask, bias_xyxy=[bolder, bolder, -bolder, -bolder])
 
