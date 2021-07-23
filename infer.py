@@ -127,7 +127,6 @@ def infer_instance(model: Segment,
     mask_transform = transforms.ToTensor()
     heatmap_transfrom = transforms.ToTensor()
 
-
     image = cv.resize(image, input_size)
     segment_mask = cv.resize(segment_mask, input_size)
     heatmaps = [cv.resize(heatmap, input_size) for heatmap in heatmaps]
@@ -139,12 +138,14 @@ def infer_instance(model: Segment,
     heatmap_tensors = [heatmap_transfrom(heatmap) for heatmap in heatmaps]
     heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
 
-    input_tensor = torch.cat([image_tensor, heatmap_tensor], dim=1)
+    input_tensor = torch.cat([image_tensor, heatmap_tensor], dim=0)
+    input_tensor = torch.unsqueeze(input_tensor, axis=0)
 
-    input_tensor = input_tensor.to(model.device)
+    input_tensor = input_tensor.to(next(model.parameters()).device)
 
     output_tensor = model(input_tensor)
     instance_mask = torch.sigmoid(output_tensor)
+    instance_mask = (instance_mask[0][0] * 255).detach().numpy().astype(np.uint8)
 
     # mask转换
     if bolder != 0:
