@@ -24,7 +24,6 @@ from model.segment import Segment
 
 
 class InstanceCommonDataset(Dataset):
-
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
         self.test = test
@@ -32,16 +31,12 @@ class InstanceCommonDataset(Dataset):
         out_size = (480, 480)
         self.out_size = out_size
 
-        self.img_transform = transforms.Compose(
-            [
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ]
-        )
+        self.img_transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
 
-        self.mask_transform = transforms.Compose(
-            [transforms.ToTensor()]
-        )
+        self.mask_transform = transforms.Compose([transforms.ToTensor()])
 
         self.results = []
 
@@ -62,7 +57,7 @@ class InstanceCommonDataset(Dataset):
 
                     yield 'box' in result
                     x0, y0, x1, y1 = result['box']
-                    bw, bh = x1-x0, y1-y0
+                    bw, bh = x1 - x0, y1 - y0
                     yield bw > 50 and bh > 50
 
                 if not common_filter(obj, filter):
@@ -70,8 +65,7 @@ class InstanceCommonDataset(Dataset):
 
                 obj[key_combine('image', 'image_path')] = image_path
 
-                common_choice(obj, key_choices={
-                              'instance_mask', 'image', 'box'})
+                common_choice(obj, key_choices={'instance_mask', 'image', 'box'})
 
                 self.results.append(obj)
 
@@ -85,12 +79,13 @@ class InstanceCommonDataset(Dataset):
 
         # 增强
 
-        def sometimes(x): return iaa.Sometimes(0.6, x)
+        def sometimes(x):
+            return iaa.Sometimes(0.6, x)
 
         ih, iw = image.shape[:2]
         x0, y0, x1, y1 = box
-        box_center_x = (x0+x1)/2
-        box_center_y = (y0+y1)/2
+        box_center_x = (x0 + x1) / 2
+        box_center_y = (y0 + y1) / 2
         tx = int(iw / 2 - box_center_x)
         ty = int(ih / 2 - box_center_y)
 
@@ -98,7 +93,10 @@ class InstanceCommonDataset(Dataset):
             aug = iaa.Affine(translate_px={"x": (tx, tx), "y": (ty, ty)})
         else:
             aug = iaa.Sequential([
-                iaa.Affine(translate_px={"x": (tx, tx), "y": (ty, ty)}),
+                iaa.Affine(translate_px={
+                    "x": (tx, tx),
+                    "y": (ty, ty)
+                }),
                 # sometimes(
                 #     iaa.Affine(rotate=(-25, 25)),
                 # ),
@@ -123,23 +121,25 @@ class InstanceCommonDataset(Dataset):
 
         if self.test:
             aug = iaa.Sequential([
-                iaa.CropAndPad(((top, top), (right, right),
-                                (bottom, bottom), (left, left))),
-                iaa.Resize(
-                    {"height": self.out_size[0], "width": self.out_size[1]})
+                iaa.CropAndPad(((top, top), (right, right), (bottom, bottom), (left, left))),
+                iaa.Resize({
+                    "height": self.out_size[0],
+                    "width": self.out_size[1]
+                })
             ])
         else:
             aug = iaa.Sequential([
-                iaa.CropAndPad(((top, top), (right, right),
-                                (bottom, bottom), (left, left))),
+                iaa.CropAndPad(((top, top), (right, right), (bottom, bottom), (left, left))),
                 # iaa.CropAndPad(((top-ah, top+ah), (right-aw, right+aw),
                 #                 (bottom-ah, bottom+ah), (left-aw, left+aw))),
                 # sometimes(iaa.LinearContrast((0.75, 1.5))),
                 # sometimes(iaa.AdditiveGaussianNoise(
                 #     loc=0, scale=(0.0, 0.05*255), per_channel=0.5)),
                 # sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
-                iaa.Resize(
-                    {"height": self.out_size[0], "width": self.out_size[1]})
+                iaa.Resize({
+                    "height": self.out_size[0],
+                    "width": self.out_size[1]
+                })
             ])
 
         common_aug(result, aug, r=True)
@@ -224,17 +224,13 @@ if __name__ == "__main__":
 
     trainset = InstanceCommonDataset(args.train_dataset_dir)
 
-    trainloader = DataLoader(
-        trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn
-    )
+    trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn)
 
     print('load val dataset from ' + args.train_dataset_dir)
 
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
 
-    valloader = DataLoader(
-        valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn
-    )
+    valloader = DataLoader(valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn)
 
     # 模型，优化器，损失
     model = Segment(3)
@@ -256,8 +252,7 @@ if __name__ == "__main__":
     if hasattr(args, 'checkpoint_save_path'):
         branch_best_path = args.checkpoint_save_path
     else:
-        branch_best_path = os.path.join(
-            args.checkpoint_dir, f'{branch_name}_best.pth')
+        branch_best_path = os.path.join(args.checkpoint_dir, f'{branch_name}_best.pth')
 
     if os.path.exists(branch_best_path):
         checkpoint = torch.load(branch_best_path)
@@ -320,7 +315,10 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
 
-            outmask_ts = model.train_batch(image_ts)
+            input_ts = torch.cat([image_ts], dim=1)
+            output_ts = model(input_ts)
+            outmask_ts = torch.sigmoid(output_ts)
+            
             loss = criterion(outmask_ts, mask_ts)
             loss.backward()
             optimizer.step()
@@ -329,11 +327,9 @@ if __name__ == "__main__":
 
             # 打印训练loss
             if i0 % args.show_iter == args.show_iter - 1:
-                print(
-                    f" [epoch {epoch}]"
-                    f" [{i0*args.batch_size}/{len(trainset)}]"
-                    f" [loss: {round(sum(loss_total)/len(loss_total),6)}]"
-                )
+                print(f" [epoch {epoch}]"
+                      f" [{i0*args.batch_size}/{len(trainset)}]"
+                      f" [loss: {round(sum(loss_total)/len(loss_total),6)}]")
                 loss_total = []  # 清空loss
 
             # 预测
@@ -342,34 +338,35 @@ if __name__ == "__main__":
                     model.eval()
 
                     def tensor2mask(tensor):
-                        return (tensor[0]*255).cpu().detach().numpy().astype(np.uint8)
+                        return (tensor[0] * 255).cpu().detach().numpy().astype(np.uint8)
 
                     def tensors_mean_iou(outmask_ts, mask_ts):
-                        return mean(mask_iou(tensor2mask(outmask_t), tensor2mask(mask_t)) for outmask_t, mask_t in zip(outmask_ts, mask_ts))
+                        return mean(
+                            mask_iou(tensor2mask(outmask_t), tensor2mask(mask_t))
+                            for outmask_t, mask_t in zip(outmask_ts, mask_ts))
 
                     # 打印iou
                     train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
 
                     val_ious = []
                     for j0, (vimage_ts, vmask_ts, vresults) in enumerate(valloader):
-                        vimage_ts, vmask_ts = vimage_ts.to(
-                            device), vmask_ts.to(device)
-                        voutmask_ts = model.train_batch(vimage_ts)
-                        val_ious.append(tensors_mean_iou(
-                            voutmask_ts, vmask_ts))
+                        vimage_ts, vmask_ts = vimage_ts.to(device), vmask_ts.to(device)
+                        
+                        vinput_ts = torch.cat([image_ts], dim=1)
+                        voutput_ts = model(vinput_ts)
+                        voutmask_ts = torch.sigmoid(voutput_ts)
+
+                        val_ious.append(tensors_mean_iou(voutmask_ts, vmask_ts))
                         # TODO 验证集限制了大小
                         break
 
                     val_iou = mean(val_ious)
 
                     print(
-                        f"{branch_name}",
-                        f" {device}",
-                        f" [epoch {epoch}]"
+                        f"{branch_name}", f" {device}", f" [epoch {epoch}]"
                         f" [val_num:{len(valset)}]"
                         f" [train_batch_iou: {round(train_batch_iou,6)}]"
-                        f" [val_iou: {round(val_iou,6)}]"
-                    )
+                        f" [val_iou: {round(val_iou,6)}]")
 
                     # 可视化
                     if show_img_tag:
@@ -389,10 +386,8 @@ if __name__ == "__main__":
                         vmix = vimage.copy()
                         draw_mask(vmix, voutmask)
 
-                        outmask_show = cv.applyColorMap(
-                            outmask, cv.COLORMAP_HOT)
-                        voutmask_show = cv.applyColorMap(
-                            voutmask, cv.COLORMAP_HOT)
+                        outmask_show = cv.applyColorMap(outmask, cv.COLORMAP_HOT)
+                        voutmask_show = cv.applyColorMap(voutmask, cv.COLORMAP_HOT)
 
                         # 蓝图变红图
                         # train_mask3 = cv.cvtColor(
@@ -402,22 +397,18 @@ if __name__ == "__main__":
                         mask3 = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
                         vmask3 = cv.cvtColor(vmask, cv.COLOR_GRAY2RGB)
 
-                        train_show_img = np.concatenate(
-                            [image, mask3, mix, outmask_show], axis=1)
+                        train_show_img = np.concatenate([image, mask3, mix, outmask_show], axis=1)
 
-                        val_show_img = np.concatenate(
-                            [vimage, vmask3, vmix, voutmask_show], axis=1)
+                        val_show_img = np.concatenate([vimage, vmask3, vmix, voutmask_show], axis=1)
 
-                        show_img = np.concatenate(
-                            [train_show_img, val_show_img], axis=0)
+                        show_img = np.concatenate([train_show_img, val_show_img], axis=0)
 
                         show_img = cv.resize(show_img, (0, 0), fx=0.5, fy=0.5)
                         show_img = cv.cvtColor(show_img, cv.COLOR_RGB2BGR)
 
                     # 模型重启
-                    if iou_max-val_iou > 0.3:
-                        print(
-                            f'val_iou too low, reload checkpoint from {branch_best_path}')
+                    if iou_max - val_iou > 0.3:
+                        print(f'val_iou too low, reload checkpoint from {branch_best_path}')
                         load_checkpoint(branch_best_path)
                         epoch = start_epoch - 1
                         break
