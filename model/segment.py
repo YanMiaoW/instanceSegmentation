@@ -527,27 +527,7 @@ class Segment(nn.Module):
             output5_1 = F.softmax(self.mid_fea5_1(bottle5_1), dim=1)
             # mask_out = Variable(softmax_output.data.max(1)[1])  # max(1)[0] are max values, max(1)[1] are idxs.
             return softmax_output[:, :1], [output5_1[:, :1], output4_1[:, :1], output3_1[:, :1]]
-
-    def train_batch(self, x, heatmaps):
-        inp = torch.cat([x, heatmaps], dim=1)
-        out = self.forward(inp)
-        return torch.sigmoid(out)
         
 if __name__ == "__main__":
     from ymlib.debug_function import *
-    m = Segment(3)
-
-    criterion = nn.BCELoss()
-
-    x = torch.zeros((1, 3, 480, 480))
-    label = torch.ones((1, 1, 480, 480))
-
-    o = m.train_batch(x)
-
-    loss = criterion(o, label)
-    loss.backward()
-
-    m = modshow(m, (17+3, 480, 480))
-
-    check(o)
 
