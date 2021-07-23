@@ -78,6 +78,8 @@ if __name__ == "__main__":
     else:
         device = 'cpu'
 
+    print(f'device: {device}')
+
     instance_model = instance_model.to(device)
     pose_model = pose_model.to(device)
 
