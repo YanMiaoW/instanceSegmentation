@@ -49,12 +49,19 @@ def infer_instance(model: Segment,
         return [], None, None
 
     if bolder != 0:
-        image = cv.copyMakeBorder(image, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
-        segment_mask = cv.copyMakeBorder(segment_mask, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
+        copyMakeBorder_ = partial(cv.copyMakeBorder,
+                                  top=bolder,
+                                  bottom=bolder,
+                                  left=bolder,
+                                  right=bolder,
+                                  borderType=cv.BORDER_CONSTANT,
+                                  value=0)
+        image = copyMakeBorder_(image)
+        segment_mask = copyMakeBorder_(segment_mask)
 
     # 添加预测
     cut_size = image.shape[:2]
-    
+
     input_size = (480, 480)
 
     image_transform = transforms.Compose([
@@ -68,7 +75,6 @@ def infer_instance(model: Segment,
     image_tensor = image_transform(image)
     # TODO 添加mask训练
     segment_mask_tensor = mask_transform(segment_mask)
-
 
     input_tensor = torch.cat([image_tensor], dim=0)
     input_tensor = torch.unsqueeze(input_tensor, axis=0)
