@@ -139,7 +139,10 @@ def infer_instance(model: Segment,
     if bolder != 0:
         image = cv.copyMakeBorder(image, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
         segment_mask = cv.copyMakeBorder(segment_mask, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
-
+        pafs = [
+            cv.copyMakeBorder(paf, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0) for paf in pafs
+        ]
+        
     # 添加预测
     cut_size = image.shape[:2]
     
@@ -155,6 +158,8 @@ def infer_instance(model: Segment,
 
     image = cv.resize(image, input_size)
     segment_mask = cv.resize(segment_mask, input_size)
+    pafs = [cv.resize(paf, input_size) for paf in pafs]
+
     image_tensor = image_transform(image)
     # TODO 添加mask训练
     segment_mask_tensor = mask_transform(segment_mask)
@@ -162,7 +167,7 @@ def infer_instance(model: Segment,
     paf_tensors = [paf_transfrom(paf) for paf in pafs]
     paf_tensor = torch.cat(paf_tensors, dim=0)
     
-    input_tensor = torch.cat([image_tensor, paf_tensor], dim=1)
+    input_tensor = torch.cat([image_tensor, paf_tensor], dim=0)
     input_tensor = torch.unsqueeze(input_tensor, axis=0)
 
     input_tensor = input_tensor.to(next(model.parameters()).device)
@@ -173,7 +178,6 @@ def infer_instance(model: Segment,
 
     # 恢复mask
     instance_mask = cv.resize(instance_mask, cut_size[::-1])
-
 
     if bolder != 0:
         instance_mask = crop_pad(instance_mask, bias_xyxy=[bolder, bolder, -bolder, -bolder])
