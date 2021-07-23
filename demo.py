@@ -174,4 +174,5 @@ if __name__ == "__main__":
                     draw_mask(mix, instance_mask, index2color(k0, 10))
                     k0 = k0 + 1 if k0 < 10 else 0
 
-        imshow(mix, window_name=filepath)
+        # imshow(mix, window_name=filepath)
+        cv.imwrite(result_path, mix)
