@@ -167,7 +167,7 @@ if __name__ == "__main__":
                     draw_keypoint(mix, keypoints, labeled=True)
 
                     heatmaps, heatmap_show = keypoint2heatmaps(keypoints, (h, w))
-                    instance_mask = infer_instance(instance_model, segment_mask, heatmaps, rect=rect, bolder=16)
+                    instance_mask = infer_instance(instance_model, image, segment_mask, heatmaps, rect=rect, bolder=16)
 
                     # 画实例分割mask
                     draw_mask(mix, instance_mask, index2color(k0, 10))
