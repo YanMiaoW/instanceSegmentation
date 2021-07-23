@@ -527,10 +527,7 @@ class Segment(nn.Module):
             output5_1 = F.softmax(self.mid_fea5_1(bottle5_1), dim=1)
             # mask_out = Variable(softmax_output.data.max(1)[1])  # max(1)[0] are max values, max(1)[1] are idxs.
             return softmax_output[:, :1], [output5_1[:, :1], output4_1[:, :1], output3_1[:, :1]]
-
         
 if __name__ == "__main__":
     from ymlib.debug_function import *
-    m = Segment(3)
 
-    pass
