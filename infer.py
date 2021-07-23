@@ -201,6 +201,10 @@ def infer_instance(model: Segment,
             cv.copyMakeBorder(heatmap, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0) for heatmap in heatmaps
         ]
 
+        pafs = [
+            cv.copyMakeBorder(paf, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0) for paf in pafs
+        ]
+        
     # 添加预测
     cut_size = image.shape[:2]
     
@@ -218,6 +222,7 @@ def infer_instance(model: Segment,
     image = cv.resize(image, input_size)
     segment_mask = cv.resize(segment_mask, input_size)
     heatmaps = [cv.resize(heatmap, input_size) for heatmap in heatmaps]
+    pafs = [cv.resize(paf, input_size) for paf in pafs]
 
     image_tensor = image_transform(image)
     # TODO 添加mask训练
@@ -230,6 +235,7 @@ def infer_instance(model: Segment,
     paf_tensor = torch.cat(paf_tensors, dim=0)
 
     input_tensor = torch.cat([image_tensor, heatmap_tensor, paf_tensor], dim=0)
+    input_tensor = torch.unsqueeze(input_tensor, axis=0)
 
     input_tensor = input_tensor.to(next(model.parameters()).device)
 

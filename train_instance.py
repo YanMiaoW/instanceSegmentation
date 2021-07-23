@@ -36,17 +36,12 @@ class InstanceCommonDataset(Dataset):
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
-<<<<<<< HEAD
 
         self.mask_transform = transforms.Compose([transforms.ToTensor()])
 
         self.heatmap_transfrom = transforms.Compose([
             transforms.ToTensor(),
         ])
-=======
-
-        self.mask_transform = transforms.Compose([transforms.ToTensor()])
->>>>>>> origin
 
         self.paf_transfrom = transforms.Compose([
             transforms.ToTensor(),
@@ -83,11 +78,7 @@ class InstanceCommonDataset(Dataset):
 
                 obj[key_combine('image', 'image_path')] = image_path
 
-<<<<<<< HEAD
                 common_choice(obj, key_choices={'instance_mask', 'image', 'box', 'body_keypoint'})
-=======
-                common_choice(obj, key_choices={'instance_mask', 'image', 'box'})
->>>>>>> origin
 
                 self.results.append(obj)
 
