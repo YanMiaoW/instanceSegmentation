@@ -117,6 +117,8 @@ def infer_instance(model: Segment,
         ]
 
     # 添加预测
+    cut_size = image.shape[:2]
+    
     input_size = (480, 480)
 
     image_transform = transforms.Compose([
@@ -147,7 +149,9 @@ def infer_instance(model: Segment,
     instance_mask = torch.sigmoid(output_tensor)
     instance_mask = (instance_mask[0][0] * 255).detach().numpy().astype(np.uint8)
 
-    # mask转换
+     # 恢复mask
+    instance_mask = cv.resize(instance_mask, cut_size[::-1])
+   
     if bolder != 0:
         instance_mask = crop_pad(instance_mask, bias_xyxy=[bolder, bolder, -bolder, -bolder])
 
