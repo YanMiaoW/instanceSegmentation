@@ -205,10 +205,7 @@ def infer_instance(model: Segment,
         image = copyMakeBorder_(image)
         segment_mask = copyMakeBorder_(segment_mask)
         heatmaps = [copyMakeBorder_(heatmap) for heatmap in heatmaps]
-
-        pafs = [
-            cv.copyMakeBorder(paf, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0) for paf in pafs
-        ]
+        pafs = [copyMakeBorder_(paf) for paf in pafs]
         
     # 添加预测
     cut_size = image.shape[:2]
