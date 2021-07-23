@@ -94,9 +94,7 @@ if __name__ == "__main__":
     print(f'save result mix to {save_dir}')
 
     for i0, filepath in enumerate(tqdm.tqdm(image_paths)):
-        if i0 != 13:
-            continue
-        # filepath = '/Users/yanmiao/yanmiao/data-common/supervisely/image/05411.png'
+        filepath = '/Users/yanmiao/yanmiao/data-common/supervisely/image/01767.png'
 
         _, basename, _ = path_decompose(filepath)
         result_path = os.path.join(save_dir, f'{basename}.jpg')
@@ -137,16 +135,20 @@ if __name__ == "__main__":
 
             rect = xywh2xyxy(rect)
 
+            # 画框
             draw_box(mix, rect)
 
             # 获取人脸
             faces = infer_face_detect(face_detect_model, image, mask=segment_mask, rect=rect, bolder=16)
 
-            # 获取mask
-            mask = contour2mask(contours, hierarchy, j0, segment_mask.shape)
+            # 画脸
+            for k0, box_xyxy in enumerate(faces):
+                draw_box(mix, box_xyxy, index2color(k0, len(faces)))
 
             if len(faces) <= 1:
+                mask = contour2mask(contours, hierarchy, j0, segment_mask.shape)
 
+                # 画语义分割mask
                 draw_mask(mix, mask, index2color(j0, instance_num))
 
                 for k0, box_xyxy in enumerate(faces):
@@ -158,11 +160,14 @@ if __name__ == "__main__":
                     draw_keypoint(mix, keypoints, labeled=True)
 
             elif len(faces) >= 2:
-                poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, bolder=16)
-
-                for keypoint in poses:
+                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+        
+                for keypoints in poses:
+                    # 画肢体点
                     draw_keypoint(mix, keypoints, labeled=True)
-                    heatmaps, heatmap_show = keypoint2heatmaps(keypoint, (h, w))
+
+                    # 画实例分割mask
+                    heatmaps, heatmap_show = keypoint2heatmaps(keypoints, (h, w))
                     instance_mask = infer_instance(instance_model, segment_mask, heatmaps, rect=rect, bolder=16)
                     draw_mask(mix, instance_mask, index2color(k0, 10))
                     k0 = k0 + 1 if k0 < 10 else 0
