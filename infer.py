@@ -111,8 +111,14 @@ def infer_instance(model: Segment,
 
     if bolder != 0:
         image = cv.copyMakeBorder(image, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
+        segment_mask = cv.copyMakeBorder(segment_mask, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
+        heatmaps = [
+            cv.copyMakeBorder(heatmap, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0) for heatmap in heatmaps
+        ]
 
     # 添加预测
+    input_size = (480, 480)
+
     image_transform = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -120,6 +126,11 @@ def infer_instance(model: Segment,
 
     mask_transform = transforms.ToTensor()
     heatmap_transfrom = transforms.ToTensor()
+
+
+    image = cv.resize(image, input_size)
+    segment_mask = cv.resize(segment_mask, input_size)
+    heatmaps = [cv.resize(heatmap, input_size) for heatmap in heatmaps]
 
     image_tensor = image_transform(image)
     # TODO 添加mask训练
