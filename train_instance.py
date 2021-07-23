@@ -344,7 +344,10 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
 
-            outmask_ts = model.train_batch(image_ts, heatmap_ts, paf_ts)
+            input_ts = torch.cat([image_ts, heatmap_ts], dim=1)
+            output_ts = model(input_ts)
+            outmask_ts = torch.sigmoid(output_ts)
+
             loss = criterion(outmask_ts, mask_ts)
             loss.backward()
             optimizer.step()
@@ -377,9 +380,12 @@ if __name__ == "__main__":
                     val_ious = []
                     for j0, (vimage_ts, vmask_ts, vheatmap_ts, vpaf_ts, vresults) in enumerate(valloader):
                         vimage_ts, vmask_ts = vimage_ts.to(device), vmask_ts.to(device)
-                        vheatmap_ts = vheatmap_ts.to(device)
-                        vpaf_ts = vpaf_ts.to(device)
-                        voutmask_ts = model.train_batch(vimage_ts, vheatmap_ts, vpaf_ts)
+                        vheatmap_ts, vpaf_ts = vheatmap_ts.to(device), vpaf_ts.to(device)
+                        
+                        vinput_ts = torch.cat([image_ts, heatmap_ts], dim=1)
+                        voutput_ts = model(vinput_ts)
+                        voutmask_ts = torch.sigmoid(voutput_ts)
+
                         val_ious.append(tensors_mean_iou(voutmask_ts, vmask_ts))
                         # TODO 验证集限制了大小
                         break

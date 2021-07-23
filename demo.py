@@ -16,7 +16,7 @@ from ymlib.common import path_decompose, get_minimum_memory_footprint_id, get_gi
 from tsai.face import get_face_detect_model, infer_face_detect
 from tsai.segment import get_segment_model, infer_segment
 from other.LightPoseEstimation.infer import get_pose_model, infer_pose
-from instanceSegmentation.infer import get_instance_model, infer_instance
+from instanceSegmentation.infer import get_instance_model, infer_instance, keypoint2heatmaps, connection2pafs
 
 
 def parse_args():
@@ -139,28 +139,32 @@ if __name__ == "__main__":
 
             draw_box(mix, rect)
 
+            # 获取人脸
             faces = infer_face_detect(face_detect_model, image, mask=segment_mask, rect=rect, bolder=16)
 
+            # 获取mask
+            mask = contour2mask(contours, hierarchy, j0, segment_mask.shape)
+
             if len(faces) <= 1:
-                # 获取mask
-                mask = contour2mask(contours, hierarchy, j0, segment_mask.shape)
 
                 draw_mask(mix, mask, index2color(j0, instance_num))
 
                 for k0, box_xyxy in enumerate(faces):
                     draw_box(mix, box_xyxy, index2color(k0, len(faces)))
 
-                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+                poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, bolder=16)
 
                 for keypoints in poses:
                     draw_keypoint(mix, keypoints, labeled=True)
 
             elif len(faces) >= 2:
-                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+                poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, bolder=16)
         
                 for keypoint in poses:
                     draw_keypoint(mix, keypoints, labeled=True)
-                    instance_mask = infer_instance(instance_model, segment_mask, rect=rect, bolder=16)
+                    heatmaps, heatmap_show = keypoint2heatmaps(keypoint, (h, w))
+                    pafs, paf_show = connection2pafs(keypoint, (h, w))
+                    instance_mask = infer_instance(instance_model, segment_mask, heatmaps, pafs, rect=rect, bolder=16)
                     draw_mask(mix, instance_mask, index2color(k0, 10))
                     k0 = k0 + 1 if k0 < 10 else 0
 
