@@ -530,5 +530,3 @@ class Segment(nn.Module):
         
 if __name__ == "__main__":
     from ymlib.debug_function import *
-
-    check(o)
