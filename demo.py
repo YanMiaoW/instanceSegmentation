@@ -57,6 +57,8 @@ if __name__ == "__main__":
 
     branch_name = get_git_branch_name()
 
+    print(f'branch_name: {branch_name}')
+
     # 加载模型
     if args.checkpoint_path is not None:
         branch_best_path = args.checkpoint_path
@@ -104,8 +106,14 @@ if __name__ == "__main__":
             continue
 
         image = cv.imread(filepath)
-        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
         h, w = image.shape[:2]
+
+        scale_ = 1000 / h
+        if scale_ < 0.8:
+            image = cv.resize(image, (0, 0), fx=scale_, fy=scale_)
+
+        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
+
         mix = image.copy()
 
         segment_mask = infer_segment(segment_model, image)
