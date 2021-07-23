@@ -21,7 +21,7 @@ from ymlib.eval_function import mask_iou
 from ymlib.debug_function import *
 
 from model.segment import Segment
-from instanceSegmentation.infer import ORDER_PART_NAMES, keypoint2heatmaps
+from instanceSegmentation.infer import ORDER_PART_NAMES,CONNECTION_PARTS, keypoint2heatmaps, connection2pafs
 
 
 class InstanceCommonDataset(Dataset):
@@ -344,7 +344,7 @@ if __name__ == "__main__":
 
             optimizer.zero_grad()
 
-            input_ts = torch.cat([image_ts, heatmap_ts], dim=1)
+            input_ts = torch.cat([image_ts, heatmap_ts, paf_ts], dim=1)
             output_ts = model(input_ts)
             outmask_ts = torch.sigmoid(output_ts)
 
@@ -382,7 +382,7 @@ if __name__ == "__main__":
                         vimage_ts, vmask_ts = vimage_ts.to(device), vmask_ts.to(device)
                         vheatmap_ts, vpaf_ts = vheatmap_ts.to(device), vpaf_ts.to(device)
                         
-                        vinput_ts = torch.cat([image_ts, heatmap_ts], dim=1)
+                        vinput_ts = torch.cat([image_ts, heatmap_ts, vpaf_ts], dim=1)
                         voutput_ts = model(vinput_ts)
                         voutmask_ts = torch.sigmoid(voutput_ts)
 
