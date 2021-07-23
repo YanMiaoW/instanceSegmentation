@@ -137,15 +137,20 @@ def infer_instance(model: Segment,
         return [], None, None
 
     if bolder != 0:
-        image = cv.copyMakeBorder(image, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
-        segment_mask = cv.copyMakeBorder(segment_mask, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0)
-        pafs = [
-            cv.copyMakeBorder(paf, bolder, bolder, bolder, bolder, cv.BORDER_CONSTANT, value=0) for paf in pafs
-        ]
-        
+        copyMakeBorder_ = partial(cv.copyMakeBorder,
+                                  top=bolder,
+                                  bottom=bolder,
+                                  left=bolder,
+                                  right=bolder,
+                                  borderType=cv.BORDER_CONSTANT,
+                                  value=0)
+        image = copyMakeBorder_(image)
+        segment_mask = copyMakeBorder_(segment_mask)
+        pafs = [copyMakeBorder_(paf) for paf in pafs]
+
     # 添加预测
     cut_size = image.shape[:2]
-    
+
     input_size = (480, 480)
 
     image_transform = transforms.Compose([
