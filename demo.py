@@ -162,8 +162,9 @@ if __name__ == "__main__":
                     # 画肢体点
                     draw_keypoint(mix, keypoints, labeled=True)
 
-                    # 画实例分割mask
                     instance_mask = infer_instance(instance_model, segment_mask, rect=rect, bolder=16)
+                    
+                    # 画实例分割mask
                     draw_mask(mix, instance_mask, index2color(k0, 10))
                     k0 = k0 + 1 if k0 < 10 else 0
 
