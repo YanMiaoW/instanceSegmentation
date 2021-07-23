@@ -14,7 +14,7 @@ def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/not_ex
     instance_model = Segment(3)
     if os.path.exists(checkpoint_path):
         print(f'loading model from {checkpoint_path}')
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
         instance_model.load_state_dict(checkpoint["state_dict"])
     else:
         print('instance_model checkpoint is not found')
