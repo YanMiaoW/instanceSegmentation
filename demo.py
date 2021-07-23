@@ -154,13 +154,13 @@ if __name__ == "__main__":
                 for k0, box_xyxy in enumerate(faces):
                     draw_box(mix, box_xyxy, index2color(k0, len(faces)))
 
-                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+                poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, bolder=16)
 
                 for keypoints in poses:
                     draw_keypoint(mix, keypoints, labeled=True)
 
             elif len(faces) >= 2:
-                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+                poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, bolder=16)
 
                 for keypoints in poses:
                     # 画肢体点
