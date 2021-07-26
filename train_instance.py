@@ -253,6 +253,12 @@ if __name__ == "__main__":
             iou_max = max(iou_max, checkpoint['best'])
             model.load_state_dict(checkpoint["state_dict"])
             optimizer.load_state_dict(checkpoint["optimizer"])
+            model = model.to(device)
+            for state in optimizer.state.values():
+                for k, v in state.items():
+                    if isinstance(v, torch.Tensor):
+                        state[k] = v.to(device)
+
         except:
             print('load fail')
 
