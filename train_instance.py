@@ -398,12 +398,15 @@ if __name__ == "__main__":
 
                     # 模型更新
                     if os.path.exists(branch_best_path) and hasattr(args, 'syn_train') and args.syn_train:
-                        checkpoint = torch.load(branch_best_path)
-                        if iou_max < checkpoint['best']:
-                            print(f'syn_train update model from {branch_best_path}')
-                            load_checkpoint(branch_best_path)
-                            epoch = start_epoch - 1
-                            break
+                        try:
+                            checkpoint = torch.load(branch_best_path)
+                            if iou_max < checkpoint['best']:
+                                print(f'syn_train update model from {branch_best_path}')
+                                load_checkpoint(branch_best_path)
+                                epoch = start_epoch - 1
+                                break
+                        except:
+                            print('update fail')
 
                     # 模型保存
                     if val_iou > iou_max and val_iou > 0.7:
