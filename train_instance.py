@@ -6,64 +6,45 @@ import os
 import cv2 as cv
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
-import torch.optim as optim
-from PIL import Image
-import random
-import math
+from torch.optim import Adam
 
 from imgaug import augmenters as iaa
 import imgaug as ia
 
 from ymlib.common_dataset_api import common_ann_loader, common_aug, common_choice, common_filter, common_transfer, key_combine
-from ymlib.dataset_visual import mask2box, draw_mask, index2color
-from ymlib.common import dict2class, get_git_branch_name, get_minimum_memory_footprint_id, get_user_hostname, mean
-from ymlib.eval_function import mask_iou
+from ymlib.dataset_visual import draw_mask
+from ymlib.dataset_util import mask_iou, mask2box, get_downsample_ratio, hw2xyxy, xyxy2ltrb, xyxy2center, xyxy2hw
+from ymlib.common import dict2class, get_git_branch_name, get_maximum_free_memory_gpu_id, get_user_hostname, mean
 from ymlib.debug_function import *
 
 from model.segment import Segment
-from instanceSegmentation.infer import ORDER_PART_NAMES,CONNECTION_PARTS, keypoint2heatmaps, connection2pafs
+from instanceSegmentation.infer import ORDER_PART_NAMES, CONNECTION_PARTS, MODEL_INPUT_SIZE, keypoint2heatmaps, connection2pafs
 
 
 class InstanceCommonDataset(Dataset):
     def __init__(self, dataset_dir, test: bool = False) -> None:
         super().__init__()
+
         self.test = test
-
-        out_size = (480, 480)
-        self.out_size = out_size
-
-        self.img_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ])
-
-        self.mask_transform = transforms.Compose([transforms.ToTensor()])
-
-        self.heatmap_transfrom = transforms.Compose([
-            transforms.ToTensor(),
-        ])
-
-        self.paf_transfrom = transforms.Compose([
-            transforms.ToTensor(),
-        ])
 
         self.results = []
 
         for ann in common_ann_loader(dataset_dir):
 
-            common_choice(ann, key_choices={'image', 'object'})
+            common_choice(ann, key_choices={'image', 'object', 'segment_mask'})
 
             objs = ann[key_combine('object', 'sub_list')]
             image_path = ann[key_combine('image', 'image_path')]
+            segment_path = ann[key_combine('segment_mask', 'mask_path')]
 
             for obj in objs:
 
                 def filter(result):
                     yield 'instance_mask' in result
 
-                    yield 'body_keypoint' in result
+                    yield 'body_keypoints' in result
 
-                    yield sum(keypoint['status'] != 'missing' for keypoint in result['body_keypoint'].values()) > 9
+                    yield sum(keypoint['status'] != 'missing' for keypoint in result['body_keypoints'].values()) > 9
 
                     if 'class' in result:
                         yield result['class'] in ['person']
@@ -73,118 +54,93 @@ class InstanceCommonDataset(Dataset):
                     bw, bh = x1 - x0, y1 - y0
                     yield bw > 50 and bh > 50
 
-                if not common_filter(obj, filter):
-                    continue
+                if common_filter(obj, filter):
 
-                obj[key_combine('image', 'image_path')] = image_path
+                    obj[key_combine('image', 'image_path')] = image_path
+                    obj[key_combine('segment_mask', 'mask_path')] = segment_path
 
-                common_choice(obj, key_choices={'instance_mask', 'image', 'box', 'body_keypoint'})
+                    common_choice(obj, key_choices={'instance_mask', 'image', 'box', 'body_keypoints', 'segment_mask'})
 
-                self.results.append(obj)
+                    self.results.append(obj)
 
-        self.__getitem__(248)
+        self.__getitem__(201)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
 
         common_transfer(result)
 
-        image = result[key_combine('image', 'image')]
-        box = result[key_combine('box', 'box_xyxy')]
-
         # 增强
-
         def sometimes(x):
             return iaa.Sometimes(0.6, x)
 
-        ih, iw = image.shape[:2]
-        x0, y0, x1, y1 = box
-        box_center_x = (x0 + x1) / 2
-        box_center_y = (y0 + y1) / 2
-        tx = int(iw / 2 - box_center_x)
-        ty = int(ih / 2 - box_center_y)
+        box_type = key_combine('box', 'box_xyxy')
+        segment_mask_type = key_combine('segment_mask', 'mask')
 
-        if self.test:
-            aug = iaa.Affine(translate_px={"x": (tx, tx), "y": (ty, ty)})
-        else:
-            aug = iaa.Sequential([
-                iaa.Affine(translate_px={
-                    "x": (tx, tx),
-                    "y": (ty, ty)
-                }),
-                # sometimes(
-                #     iaa.Affine(rotate=(-25, 25)),
-                # ),
-            ])
+        # 降分辨率
+        common_aug(result, iaa.Resize(get_downsample_ratio(xyxy2hw(result[box_type]), MODEL_INPUT_SIZE, base_on='short')), r=True)
 
-        common_aug(result, aug, r=True)
+        # 移到中心并旋转
+        cx, cy = xyxy2center(hw2xyxy(result[segment_mask_type].shape))
+        box_cx, box_cy = xyxy2center(result[box_type])
+        common_aug(result,
+                   iaa.Affine(
+                       translate_px={
+                           'x': int(cx - box_cx),
+                           'y': int(cy - box_cy)
+                       },
+                       rotate=(-15, 15) if not self.test else None,
+                   ),
+                   r=True)
 
-        instance_mask = result[key_combine('instance_mask', 'mask')]
-        instance_box = mask2box(instance_mask)
+        # 裁剪
+        xyxy = mask2box(result[segment_mask_type])
+        left, top, right, bottom = xyxy2ltrb(xyxy, result[segment_mask_type].shape)
+        left, top, right, bottom = left + 32, top + 32, right + 32, bottom + 32
+        bh, bw = xyxy2hw(xyxy)
+        ah, aw = int(bh * 0.1), int(bw * 0.1)
+        common_aug(result,
+                   iaa.CropAndPad(px=((top - ah, top + ah), (right - aw, right + aw), (bottom - ah, bottom + ah),
+                                      (left - aw, left + aw)) if not self.test else (top, right, bottom, left)),
+                   r=True)
 
-        if instance_box is None:
-            instance_box = [0, 0, iw, ih]
+        # 增强
+        common_aug(
+            result,
+            iaa.Sequential([
+                sometimes(iaa.LinearContrast((0.75, 1.5))),
+                sometimes(iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * .99), per_channel=0.5)),
+                sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
+            ] if not self.test else None), r=True)
 
-        x1, y1, x2, y2 = instance_box
-        pad = 16
-        left = -x1 + pad
-        right = x2 - iw + pad
-        top = -y1 + pad
-        bottom = y2 - ih + pad
-        # aw = int((x2-x1)*0.2)
-        # ah = int((y2-y1)*0.2)
-
-        if self.test:
-            aug = iaa.Sequential([
-                iaa.CropAndPad(((top, top), (right, right), (bottom, bottom), (left, left))),
-                iaa.Resize({
-                    "height": self.out_size[0],
-                    "width": self.out_size[1]
-                })
-            ])
-        else:
-            aug = iaa.Sequential([
-                iaa.CropAndPad(((top, top), (right, right), (bottom, bottom), (left, left))),
-                # iaa.CropAndPad(((top-ah, top+ah), (right-aw, right+aw),
-                #                 (bottom-ah, bottom+ah), (left-aw, left+aw))),
-                # sometimes(iaa.LinearContrast((0.75, 1.5))),
-                # sometimes(iaa.AdditiveGaussianNoise(
-                #     loc=0, scale=(0.0, 0.05*255), per_channel=0.5)),
-                # sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
-                iaa.Resize({
-                    "height": self.out_size[0],
-                    "width": self.out_size[1]
-                })
-            ])
-
-        common_aug(result, aug, r=True)
+        common_aug(result, iaa.Resize({"height": MODEL_INPUT_SIZE[0], "width": MODEL_INPUT_SIZE[1]}), r=True)
 
         image = result[key_combine('image', 'image')]
-        mask = result[key_combine('instance_mask', 'mask')]
-        keypoint = result[key_combine('body_keypoint', 'sub_dict')]
+        segment_mask = result[key_combine('segment_mask', 'mask')]
+        instance_mask = result[key_combine('instance_mask', 'mask')]
 
-        pafs, paf_show = connection2pafs(keypoint, self.out_size)
-        heatmaps, heatmap_show = keypoint2heatmaps(keypoint, self.out_size)
+        body_keypoints = result[key_combine('body_keypoints', 'sub_dict')]
+        pafs, paf_show = connection2pafs(body_keypoints, MODEL_INPUT_SIZE)
+        heatmaps, heatmap_show = keypoint2heatmaps(body_keypoints, MODEL_INPUT_SIZE)
 
-        # image_pil = Image.fromarray(image)
-        # mask_pil = Image.fromarray(mask)
-        # heatmap_pils = [Image.fromarray(heatmap) for heatmap in heatmaps]
-        # paf_pils = [Image.fromarray(paf) for paf in pafs]
+        to_tensor = transforms.ToTensor()
+        normal = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
 
-        image_tensor = self.img_transform(image)
-        mask_tensor = self.mask_transform(mask)
-        heatmap_tensors = [self.heatmap_transfrom(heatmap) for heatmap in heatmaps]
-        heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
-        paf_tensors = [self.paf_transfrom(paf) for paf in pafs]
-        paf_tensor = torch.cat(paf_tensors, dim=0)
+        image_tensor = normal(to_tensor(image))
+        segment_mask_tensor = to_tensor(segment_mask)
+        instance_mask_tensor = to_tensor(instance_mask)
+        heatmaps_tensor = to_tensor(heatmaps)
+        pafs_tensor = to_tensor(pafs)
+
+        input_tensor = torch.cat([image_tensor, segment_mask_tensor, heatmaps_tensor, pafs_tensor], dim=0)
 
         out = {}
         out['image'] = image
-        out['mask'] = mask
+        out['instance_mask'] = instance_mask
         out['heatmapShow'] = heatmap_show
         out['pafShow'] = paf_show
 
-        return image_tensor, mask_tensor, heatmap_tensor, paf_tensor, out
+        return input_tensor, instance_mask_tensor, out
 
     def __len__(self):
         return len(self.results)
@@ -218,7 +174,7 @@ def parse_args():
             "show_iter": 20,
             "val_iter": 120,
             "batch_size": 8,
-            "cpu_num": 2,
+            "cpu_num": 0,
         }
 
     elif get_user_hostname() == ROOT_201_NAME:
@@ -249,48 +205,52 @@ if __name__ == "__main__":
 
     # 数据导入
     print('load train dataset from ' + args.train_dataset_dir)
-
     trainset = InstanceCommonDataset(args.train_dataset_dir)
-
     trainloader = DataLoader(trainset, batch_size=args.batch_size, shuffle=True, num_workers=args.cpu_num, collate_fn=collate_fn)
 
     print('load val dataset from ' + args.train_dataset_dir)
-
     valset = InstanceCommonDataset(args.val_dataset_dir, test=True)
-
-    valloader = DataLoader(valset, batch_size=args.batch_size, shuffle=True, num_workers=1, collate_fn=collate_fn)
+    valloader = DataLoader(valset, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
 
     # 模型，优化器，损失
-    model = Segment(3 + len(CONNECTION_PARTS) * 2 + len(ORDER_PART_NAMES))
+    model = Segment(3 + 1 + len(CONNECTION_PARTS) * 2 + len(ORDER_PART_NAMES))
 
     # optimizer = optim.SGD(model.parameters(), lr=1e-3, momentum=0.9)
-    optimizer = optim.Adam(model.parameters())
+    optimizer = Adam(model.parameters())
 
     criterion = nn.BCELoss()
 
     # 加载预训练模型
-    start_epoch = 0
-
-    iou_max = 0
-
     branch_name = get_git_branch_name()
-
     print(f'branch name: {branch_name}')
+
+    # 显存设备选择
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
+    if hasattr(args, 'gpu_id'):
+        device = torch.device(f"cuda:{args.gpu_id}")
+    elif hasattr(args, 'auto_gpu_id') and args.auto_gpu_id:
+        device = torch.device(f"cuda:{get_maximum_free_memory_gpu_id()}")
+    else:
+        device = 'cpu'
+
+    print(f'device: {device}')
+
+    # 加载
+    start_epoch = 0
+    iou_max = 0
 
     if hasattr(args, 'checkpoint_save_path'):
         branch_best_path = args.checkpoint_save_path
     else:
         branch_best_path = os.path.join(args.checkpoint_dir, f'{branch_name}_best.pth')
 
-    if os.path.exists(branch_best_path):
-        checkpoint = torch.load(branch_best_path)
-        iou_max = checkpoint['best']
-
     def load_checkpoint(checkpoint_path):
         try:
-            global start_epoch
-            checkpoint = torch.load(checkpoint_path)
+            global start_epoch, device, model, optimizer, iou_max
+            model = model.cpu()
+            checkpoint = torch.load(checkpoint_path, map_location=torch.device(device))
             start_epoch = checkpoint["epoch"]
+            iou_max = max(iou_max, checkpoint['best'])
             model.load_state_dict(checkpoint["state_dict"])
             optimizer.load_state_dict(checkpoint["optimizer"])
         except:
@@ -304,24 +264,6 @@ if __name__ == "__main__":
         print(f"pretrained loading checkpoint from {args.pretrained_path}")
         load_checkpoint(args.pretrained_path)
         start_epoch = 0
-
-    # 加载到内存
-    os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-    if hasattr(args, 'gpu_id'):
-        device = torch.device(f"cuda:{args.gpu_id}")
-    elif hasattr(args, 'auto_gpu_id') and args.auto_gpu_id:
-        device = torch.device(f"cuda:{get_minimum_memory_footprint_id()}")
-    else:
-        device = 'cpu'
-
-    print(f'device: {device}')
-
-    model = model.to(device)
-
-    for state in optimizer.state.values():
-        for k, v in state.items():
-            if isinstance(v, torch.Tensor):
-                state[k] = v.to(device)
 
     # 可视化
     show_img_tag = True
@@ -337,18 +279,15 @@ if __name__ == "__main__":
     while epoch < args.epoch:
 
         loss_total = []
-        for i0, (image_ts, mask_ts, heatmap_ts, paf_ts, results) in enumerate(trainloader):
+        for i0, (input_ts, instance_mask_ts, outs) in enumerate(trainloader):
             model.train()
-            image_ts, mask_ts = image_ts.to(device), mask_ts.to(device)
-            heatmap_ts, paf_ts = heatmap_ts.to(device), paf_ts.to(device)
+            input_ts, instance_mask_ts = input_ts.to(device), instance_mask_ts.to(device)
 
             optimizer.zero_grad()
 
-            input_ts = torch.cat([image_ts, heatmap_ts, paf_ts], dim=1)
-            output_ts = model(input_ts)
-            outmask_ts = torch.sigmoid(output_ts)
+            output_ts = torch.sigmoid(model(input_ts))
 
-            loss = criterion(outmask_ts, mask_ts)
+            loss = criterion(output_ts, instance_mask_ts)
             loss.backward()
             optimizer.step()
 
@@ -367,7 +306,7 @@ if __name__ == "__main__":
                     model.eval()
 
                     def tensor2mask(tensor):
-                        return (tensor[0] * 255).cpu().detach().numpy().astype(np.uint8)
+                        return (tensor[0] * 255.99).cpu().detach().numpy().astype(np.uint8)
 
                     def tensors_mean_iou(outmask_ts, mask_ts):
                         return mean(
@@ -375,20 +314,17 @@ if __name__ == "__main__":
                             for outmask_t, mask_t in zip(outmask_ts, mask_ts))
 
                     # 打印iou
-                    train_batch_iou = tensors_mean_iou(outmask_ts, mask_ts)
+                    train_batch_iou = tensors_mean_iou(output_ts, instance_mask_ts)
 
                     val_ious = []
-                    for j0, (vimage_ts, vmask_ts, vheatmap_ts, vpaf_ts, vresults) in enumerate(valloader):
-                        vimage_ts, vmask_ts = vimage_ts.to(device), vmask_ts.to(device)
-                        vheatmap_ts, vpaf_ts = vheatmap_ts.to(device), vpaf_ts.to(device)
-                        
-                        vinput_ts = torch.cat([image_ts, heatmap_ts, vpaf_ts], dim=1)
-                        voutput_ts = model(vinput_ts)
-                        voutmask_ts = torch.sigmoid(voutput_ts)
+                    for j0, (vinput_ts, vinstance_mask_ts, vouts) in enumerate(valloader):
+                        vinput_ts, vinstance_mask_ts = vinput_ts.to(device), vinstance_mask_ts.to(device)
 
-                        val_ious.append(tensors_mean_iou(voutmask_ts, vmask_ts))
-                        # TODO 验证集限制了大小
-                        break
+                        voutput_ts = torch.sigmoid(model(vinput_ts))
+
+                        val_ious.append(tensors_mean_iou(voutput_ts, vinstance_mask_ts))
+                        if len(val_ious) > 30:
+                            break
 
                     val_iou = mean(val_ious)
 
@@ -400,19 +336,19 @@ if __name__ == "__main__":
 
                     # 可视化
                     if show_img_tag:
-                        result = results[0]
+                        result = outs[0]
                         image = result['image']
-                        mask = result['mask']
+                        instance_mask = result['instance_mask']
                         heatmap_show = result['heatmapShow']
                         paf_show = result['pafShow']
-                        outmask = tensor2mask(outmask_ts[0])
+                        outmask = tensor2mask(output_ts[0])
 
-                        vresult = vresults[0]
+                        vresult = vouts[0]
                         vimage = vresult['image']
-                        vmask = vresult['mask']
+                        vinstance_mask = vresult['instance_mask']
                         vheatmap_show = vresult['heatmapShow']
                         vpaf_show = vresult['pafShow']
-                        voutmask = tensor2mask(voutmask_ts[0])
+                        voutmask = tensor2mask(voutput_ts[0])
 
                         mix = image.copy()
                         draw_mask(mix, outmask)
@@ -428,36 +364,34 @@ if __name__ == "__main__":
                         #     train_mask3, cv.COLOR_BGR2RGB)
                         # val_mask3 = cv.cvtColor(val_mask3, cv.COLOR_BGR2RGB)
 
-                        mask3 = cv.cvtColor(mask, cv.COLOR_GRAY2RGB)
-                        vmask3 = cv.cvtColor(vmask, cv.COLOR_GRAY2RGB)
+                        instance_mask3 = cv.cvtColor(instance_mask, cv.COLOR_GRAY2BGR)
+                        vinstance_mask3 = cv.cvtColor(vinstance_mask, cv.COLOR_GRAY2BGR)
 
-                        train_show_img = np.concatenate([image, mask3, heatmap_show, paf_show, mix, outmask_show], axis=1)
+                        train_show_img = np.concatenate([image, instance_mask3, heatmap_show, paf_show, mix, outmask_show], axis=1)
 
-                        val_show_img = np.concatenate([vimage, vmask3, vheatmap_show, vpaf_show, vmix, voutmask_show], axis=1)
+                        val_show_img = np.concatenate([vimage, vinstance_mask3, vheatmap_show, vpaf_show, vmix, voutmask_show], axis=1)
 
                         show_img = np.concatenate([train_show_img, val_show_img], axis=0)
 
                         show_img = cv.resize(show_img, (0, 0), fx=0.5, fy=0.5)
-                        show_img = cv.cvtColor(show_img, cv.COLOR_RGB2BGR)
 
-                    # 模型重启
+                    # 模型退化重启
                     if iou_max - val_iou > 0.3:
                         print(f'val_iou too low, reload checkpoint from {branch_best_path}')
                         load_checkpoint(branch_best_path)
                         epoch = start_epoch - 1
                         break
 
+
+
                     # 模型更新
-                    if os.path.exists(branch_best_path):
-                        checkpoint = torch.load(branch_best_path)
-                        if iou_max < checkpoint['best'] or epoch - start_epoch > 10:
-                            print(f'update model from {branch_best_path}')
-                            iou_max = checkpoint['best']
-                            if hasattr(args, 'syn_train') and args.syn_train:
-                                print('syn_train...')
-                                load_checkpoint(branch_best_path)
-                                epoch = start_epoch - 1
-                                break
+                    if os.path.exists(branch_best_path) and hasattr(args, 'syn_train') and args.syn_train:
+                        checkpoint = torch.load(branch_best_path, map_location=torch.device('cpu'))
+                        if iou_max < checkpoint['best']:
+                            print(f'syn_train update model from {branch_best_path}')
+                            load_checkpoint(branch_best_path)
+                            epoch = start_epoch - 1
+                            break
 
                     # 模型保存
                     if val_iou > iou_max and val_iou > 0.7:

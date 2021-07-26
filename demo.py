@@ -11,7 +11,7 @@ import sys
 
 from ymlib.debug_function import *
 from ymlib.dataset_visual import mask2box, draw_keypoint, draw_mask, index2color, draw_box, xywh2xyxy
-from ymlib.common import path_decompose, get_minimum_memory_footprint_id, get_git_branch_name
+from ymlib.common import path_decompose, get_maximum_free_memory_gpu_id, get_git_branch_name
 
 from tsai.face import get_face_detect_model, infer_face_detect
 from tsai.segment import get_segment_model, infer_segment
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     # 加载到显存 segment 不支持gpu
     if args.auto_gpu_id:
         os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3"
-        device = torch.device(f"cuda:{get_minimum_memory_footprint_id()}")
+        device = torch.device(f"cuda:{get_maximum_free_memory_gpu_id()}")
     else:
         device = 'cpu'
 

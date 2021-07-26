@@ -1,15 +1,17 @@
 import torch
 import torch.nn as nn
-import torchvision
 import numpy as np
 import cv2 as cv
 import os
 import math
-from ymlib.common_dataset_api import key_combine
-from ymlib.dataset_visual import crop_pad, index2color
-from instanceSegmentation.model.segment import Segment
-import torchvision.transforms as transforms
 from functools import partial
+import torchvision.transforms as transforms
+
+from ymlib.common_dataset_api import key_combine
+from ymlib.dataset_visual import index2color
+from instanceSegmentation.model.segment import Segment
+
+MODEL_INPUT_SIZE = (480, 480)
 
 ORDER_PART_NAMES = [
     "right_shoulder", "right_elbow", "right_wrist", "left_shoulder", "left_elbow", "left_wrist", "right_hip", "right_knee",
@@ -37,13 +39,15 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
 
     r = math.sqrt(math.log(threshold) * (-sigma**2))
 
-    heatmaps = []
+    h, w = shape
 
-    heatmap_show = np.zeros((*shape, 3), dtype=np.uint8)
+    heatmaps = np.zeros((h, w, len(ORDER_PART_NAMES)), dtype=np.float32)
+
+    heatmap_show = np.zeros((h, w, 3), dtype=np.uint8)
 
     for i0, key in enumerate(ORDER_PART_NAMES):
 
-        heatmap = np.zeros(shape, dtype=np.float32)
+        heatmap = heatmaps[:, :, i0]
 
         key_type = key_combine(key, 'sub_dict')
 
@@ -72,26 +76,28 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
                 region[idxs] = e_table[idxs]
 
                 show_region = heatmap_show[y_min:y_max, x_min:x_max]
+
                 color_region = np.zeros((*region.shape, 3), np.float32)
                 color_region[:] = index2color(i0, len(ORDER_PART_NAMES))
                 color_region = (e_table[:, :, np.newaxis] * color_region).astype(np.uint8)
-                show_region[:] = np.max(np.stack((show_region, color_region)), axis=0)
 
-        heatmaps.append(heatmap)
+                show_region[:] = np.max(np.stack((show_region, color_region)), axis=0)
 
     return heatmaps, heatmap_show
 
 
 def connection2pafs(keypoint, shape, sigma=10):
 
-    pafs = []
+    h, w = shape
 
-    paf_show = np.zeros((*shape, 3), dtype=np.uint8)
+    pafs = np.zeros((h, w, len(CONNECTION_PARTS) * 2), dtype=np.float32)
+
+    paf_show = np.zeros((h, w, 3), dtype=np.uint8)
 
     for i0, (part1, part2) in enumerate(CONNECTION_PARTS):
 
-        pafx = np.zeros(shape, dtype=np.float32)
-        pafy = np.zeros(shape, dtype=np.float32)
+        pafx = pafs[:, :, i0 * 2]
+        pafy = pafs[:, :, i0 * 2 + 1]
 
         part1 = key_combine(part1, 'sub_dict')
         part2 = key_combine(part2, 'sub_dict')
@@ -101,7 +107,7 @@ def connection2pafs(keypoint, shape, sigma=10):
         if part1 in keypoint and\
                 keypoint[part1][status] == 'vis' and\
                 part2 in keypoint and\
-                keypoint[part2][status] == 'vis':
+                keypoint[part2][status]  == 'vis':
 
             x1, y1 = keypoint[part1][point]
             x2, y2 = keypoint[part2][point]
@@ -112,47 +118,45 @@ def connection2pafs(keypoint, shape, sigma=10):
             if v0_norm == 0:
                 continue
 
-            h, w = shape
-            x_min = max(int(round(min(x1, x2) - sigma)), 0)
-            x_max = min(int(round(max(x1, x2) + sigma)), w - 1)
-            y_min = max(int(round(min(y1, y2) - sigma)), 0)
-            y_max = min(int(round(max(y1, y2) + sigma)), h - 1)
+            if x1 > 0 and x1 < w and y1 > 0 and y1 < h and\
+                x2 > 0 and x2 < w and y2 > 0 and y2 < h:
 
-            xs, ys = np.meshgrid(np.arange(x_min, x_max), np.arange(y_min, y_max))
+                x_min = max(int(round(min(x1, x2) - sigma)), 0)
+                x_max = min(int(round(max(x1, x2) + sigma)), w)
+                y_min = max(int(round(min(y1, y2) - sigma)), 0)
+                y_max = min(int(round(max(y1, y2) + sigma)), h)
 
-            vs = np.stack((xs.flatten() - x1, ys.flatten() - y1), axis=1)
+                xs, ys = np.meshgrid(np.arange(x_min, x_max), np.arange(y_min, y_max))
 
-            # |B|cos = |A||B|cos / |A|
-            l = np.dot(vs, v0) / v0_norm
-            c1 = (l >= 0) & (l <= v0_norm)
+                vs = np.stack((xs.flatten() - x1, ys.flatten() - y1), axis=1)
 
-            # |B|sin = |A||B|sin / |A|
-            c2 = abs(np.cross(vs, v0) / v0_norm) <= sigma
+                # |B|cos = |A||B|cos / |A|
+                l = np.dot(vs, v0) / v0_norm
+                c1 = (l >= 0) & (l <= v0_norm)
 
-            idxs = c1 & c2
+                # |B|sin = |A||B|sin / |A|
+                c2 = abs(np.cross(vs, v0) / v0_norm) <= sigma
 
-            idxs = idxs.reshape(xs.shape)
+                idxs = c1 & c2
 
-            region = pafx[y_min:y_max, x_min:x_max]
-            region[idxs] = v0[0] / v0_norm
-            region[idxs] = v0[1] / v0_norm
+                idxs = idxs.reshape(xs.shape)
 
-            show_region = paf_show[y_min:y_max, x_min:x_max]
-            color_region = np.zeros((*region.shape, 3), np.float32)
-            color_region[idxs] = index2color(i0, len(CONNECTION_PARTS))
-            show_region[:] = np.max(np.stack((show_region, color_region)), axis=0)
+                pafx[y_min:y_max, x_min:x_max][idxs] = v0[0] / v0_norm
+                pafy[y_min:y_max, x_min:x_max][idxs] = v0[1] / v0_norm
 
-        pafs.append(pafx)
-        pafs.append(pafy)
+                show_region = paf_show[y_min:y_max, x_min:x_max]
+                color_region = np.zeros((y_max - y_min, x_max - x_min, 3), np.float32)
+                color_region[idxs] = index2color(i0, len(CONNECTION_PARTS))
+                show_region[:] = np.max(np.stack((show_region, color_region)), axis=0)
 
     return pafs, paf_show
 
 
 def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/not_exist') -> nn.Module:
-    instance_model = Segment(3 + len(ORDER_PART_NAMES) + len(CONNECTION_PARTS) * 2)
+    instance_model = Segment(3 + 1 + len(ORDER_PART_NAMES) + len(CONNECTION_PARTS) * 2)
     if os.path.exists(checkpoint_path):
         print(f'loading model from {checkpoint_path}')
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
         instance_model.load_state_dict(checkpoint["state_dict"])
     else:
         print('instance_model checkpoint is not found')
@@ -168,7 +172,7 @@ def infer_instance(model: Segment,
                    mask=None,
                    rect: list = None,
                    pad=0,
-                   bolder=0) -> np.ndarray:
+                   border=0) -> np.ndarray:
     h, w = image.shape[:2]
     if rect is None:
         rect = [0, 0, w, h]
@@ -194,19 +198,19 @@ def infer_instance(model: Segment,
     if min(*image.shape[:2]) < 50:
         return [], None, None
 
-    if bolder != 0:
+    if border != 0:
         copyMakeBorder_ = partial(cv.copyMakeBorder,
-                                  top=bolder,
-                                  bottom=bolder,
-                                  left=bolder,
-                                  right=bolder,
+                                  top=border,
+                                  bottom=border,
+                                  left=border,
+                                  right=border,
                                   borderType=cv.BORDER_CONSTANT,
                                   value=0)
         image = copyMakeBorder_(image)
         segment_mask = copyMakeBorder_(segment_mask)
         heatmaps = [copyMakeBorder_(heatmap) for heatmap in heatmaps]
         pafs = [copyMakeBorder_(paf) for paf in pafs]
-        
+
     # 添加预测
     cut_size = image.shape[:2]
 
@@ -248,8 +252,8 @@ def infer_instance(model: Segment,
     # 恢复mask
     instance_mask = cv.resize(instance_mask, cut_size[::-1])
 
-    if bolder != 0:
-        instance_mask = crop_pad(instance_mask, bias_xyxy=[bolder, bolder, -bolder, -bolder])
+    if border != 0:
+        instance_mask = crop_pad(instance_mask, bias_xyxy=[border, border, -border, -border])
 
     x1, y1, x2, y2 = rect
     instance_mask = crop_pad(instance_mask, bias_xyxy=[-x1 + pad, -y1 + pad, w - x2 - pad, h - y2 - pad])
