@@ -62,8 +62,8 @@ class InstanceCommonDataset(Dataset):
                     common_choice(obj, key_choices={'instance_mask', 'image', 'box', 'body_keypoints', 'segment_mask'})
 
                     self.results.append(obj)
-
-        self.__getitem__(201)
+                    
+        self.__getitem__(0)
 
     def __getitem__(self, index):
         result = self.results[index].copy()
@@ -75,13 +75,13 @@ class InstanceCommonDataset(Dataset):
             return iaa.Sometimes(0.6, x)
 
         box_type = key_combine('box', 'box_xyxy')
-        segment_mask_type = key_combine('segment_mask', 'mask')
+        instance_mask_type = key_combine('instance_mask', 'mask')
 
         # 降分辨率
         common_aug(result, iaa.Resize(get_downsample_ratio(xyxy2hw(result[box_type]), MODEL_INPUT_SIZE, base_on='short')), r=True)
 
         # 移到中心并旋转
-        cx, cy = xyxy2center(hw2xyxy(result[segment_mask_type].shape))
+        cx, cy = xyxy2center(hw2xyxy(result[instance_mask_type].shape))
         box_cx, box_cy = xyxy2center(result[box_type])
         common_aug(result,
                    iaa.Affine(
@@ -94,8 +94,8 @@ class InstanceCommonDataset(Dataset):
                    r=True)
 
         # 裁剪
-        xyxy = mask2box(result[segment_mask_type])
-        left, top, right, bottom = xyxy2ltrb(xyxy, result[segment_mask_type].shape)
+        xyxy = mask2box(result[instance_mask_type])
+        left, top, right, bottom = xyxy2ltrb(xyxy, result[instance_mask_type].shape)
         left, top, right, bottom = left + 32, top + 32, right + 32, bottom + 32
         bh, bw = xyxy2hw(xyxy)
         ah, aw = int(bh * 0.1), int(bw * 0.1)
@@ -165,7 +165,7 @@ def parse_args():
             "continue_train": True,
             "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
             "train_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
-            "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/ochuman",
+            "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/humanTest",
             # "val_dataset_dir": "/Users/yanmiao/yanmiao/data-common/hun_sha_di_pian",
             "checkpoint_dir": "/Users/yanmiao/yanmiao/checkpoint/segment",
             # "checkpoint_save_path": "",
