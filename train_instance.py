@@ -382,8 +382,6 @@ if __name__ == "__main__":
                         epoch = start_epoch - 1
                         break
 
-
-
                     # 模型更新
                     if os.path.exists(branch_best_path) and hasattr(args, 'syn_train') and args.syn_train:
                         checkpoint = torch.load(branch_best_path, map_location=torch.device('cpu'))
