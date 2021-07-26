@@ -184,7 +184,7 @@ def parse_args():
             "continue_train": True,
             "syn_train": True,  # 当多个训练进程共用一个模型存储位置，默认情况会保存最好的模型，如开启syn_train选项，还会将最新模型推送到所有进程。
             "train_dataset_dir": "/data_ssd/ochuman",
-            "val_dataset_dir": "/data_ssd/ochuman",
+            "val_dataset_dir": "/root/ym/data-common/humanTest",
             # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
             "checkpoint_dir": "/checkpoint/segment",
             # "checkpoint_save_path": "",
@@ -366,9 +366,9 @@ if __name__ == "__main__":
                         voutmask_show = cv.applyColorMap(voutmask, cv.COLORMAP_HOT)
 
                         # 蓝图变红图
-                        # train_mask3 = cv.cvtColor(
-                        #     train_mask3, cv.COLOR_BGR2RGB)
-                        # val_mask3 = cv.cvtColor(val_mask3, cv.COLOR_BGR2RGB)
+                        train_mask3 = cv.cvtColor(
+                            train_mask3, cv.COLOR_BGR2RGB)
+                        val_mask3 = cv.cvtColor(val_mask3, cv.COLOR_BGR2RGB)
 
                         instance_mask3 = cv.cvtColor(instance_mask, cv.COLOR_GRAY2BGR)
                         vinstance_mask3 = cv.cvtColor(vinstance_mask, cv.COLOR_GRAY2BGR)
