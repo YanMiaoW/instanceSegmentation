@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import numpy as np
 import os
 import cv2 as cv
+import copy
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 from torch.optim import Adam
@@ -62,11 +63,11 @@ class InstanceCommonDataset(Dataset):
                     common_choice(obj, key_choices={'instance_mask', 'image', 'box', 'body_keypoints', 'segment_mask'})
 
                     self.results.append(obj)
-                    
+
         self.__getitem__(0)
 
     def __getitem__(self, index):
-        result = self.results[index].copy()
+        result = copy.deepcopy( self.results[index])
 
         common_transfer(result)
 
