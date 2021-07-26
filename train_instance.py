@@ -248,7 +248,7 @@ if __name__ == "__main__":
         try:
             global start_epoch, device, model, optimizer, iou_max
             model = model.cpu()
-            checkpoint = torch.load(checkpoint_path, map_location=torch.device(device))
+            checkpoint = torch.load(checkpoint_path)
             start_epoch = checkpoint["epoch"]
             iou_max = max(iou_max, checkpoint['best'])
             model.load_state_dict(checkpoint["state_dict"])
@@ -384,7 +384,7 @@ if __name__ == "__main__":
 
                     # 模型更新
                     if os.path.exists(branch_best_path) and hasattr(args, 'syn_train') and args.syn_train:
-                        checkpoint = torch.load(branch_best_path, map_location=torch.device('cpu'))
+                        checkpoint = torch.load(branch_best_path)
                         if iou_max < checkpoint['best']:
                             print(f'syn_train update model from {branch_best_path}')
                             load_checkpoint(branch_best_path)
