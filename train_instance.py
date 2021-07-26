@@ -236,7 +236,6 @@ if __name__ == "__main__":
     print(f'device: {device}')
 
     # 加载
-    start_epoch = 0
     iou_max = 0
 
     if hasattr(args, 'checkpoint_save_path'):
@@ -270,6 +269,15 @@ if __name__ == "__main__":
         print(f"pretrained loading checkpoint from {args.pretrained_path}")
         load_checkpoint(args.pretrained_path)
         start_epoch = 0
+    else:
+        start_epoch = 0
+        model = model.to(device)
+        for state in optimizer.state.values():
+            for k, v in state.items():
+                if isinstance(v, torch.Tensor):
+                    state[k] = v.to(device)
+
+
 
     # 可视化
     show_img_tag = True
