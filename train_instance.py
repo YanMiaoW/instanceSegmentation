@@ -374,9 +374,8 @@ if __name__ == "__main__":
                         voutmask_show = cv.applyColorMap(voutmask, cv.COLORMAP_HOT)
 
                         # 蓝图变红图
-                        train_mask3 = cv.cvtColor(
-                            train_mask3, cv.COLOR_BGR2RGB)
-                        val_mask3 = cv.cvtColor(val_mask3, cv.COLOR_BGR2RGB)
+                        outmask_show = cv.cvtColor( outmask_show, cv.COLOR_BGR2RGB)
+                        voutmask_show = cv.cvtColor(voutmask_show, cv.COLOR_BGR2RGB)
 
                         instance_mask3 = cv.cvtColor(instance_mask, cv.COLOR_GRAY2BGR)
                         vinstance_mask3 = cv.cvtColor(vinstance_mask, cv.COLOR_GRAY2BGR)
