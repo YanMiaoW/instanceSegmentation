@@ -98,19 +98,19 @@ class InstanceCommonDataset(Dataset):
         # 裁剪
         xyxy = mask2box(result[instance_mask_type])
         left, top, right, bottom = xyxy2ltrb(xyxy, result[instance_mask_type].shape)
-        left, top, right, bottom = left + 32, top + 32, right + 32, bottom + 32
         bh, bw = xyxy2hw(xyxy)
-        ah, aw = int(bh * 0.1), int(bw * 0.1)
+        ah, aw = int(bh * 0.3), int(bw * 0.3)
+        ch, cw = int(bh * 0.1), int(bw * 0.1)
         common_aug(result,
-                   iaa.CropAndPad(px=((top - ah, top + ah), (right - aw, right + aw), (bottom - ah, bottom + ah),
-                                      (left - aw, left + aw)) if not self.test else (top, right, bottom, left)),
+                   iaa.CropAndPad(px=((top - ch, top + ah), (right - cw, right + aw), (bottom - ch, bottom + ah),
+                                      (left - cw, left + aw)) if not self.test else (top, right, bottom, left)),
                    r=True)
 
         # 增强
         common_aug(result,
                    iaa.Sequential([
                        sometimes(iaa.LinearContrast((0.75, 1.5))),
-                       sometimes(iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * .99), per_channel=0.5)),
+                       sometimes(iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * 255.99), per_channel=0.5)),
                        sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
                    ] if not self.test else None),
                    r=True)
@@ -131,10 +131,10 @@ class InstanceCommonDataset(Dataset):
             for keypoints in body_keypoints.values():
                 if random.random() < 0.4:
                     keypoints[key_combine('status', 'keypoint_status')] = 'missing'
-                elif random.random() < 0.4:
+                elif random.random() < 0.2:
                     x, y = keypoints[key_combine('point', 'point_xy')]
-                    x += random.gauss(0, 0.02)*MODEL_INPUT_SIZE[0]
-                    y += random.gauss(0, 0.02)*MODEL_INPUT_SIZE[0]
+                    x += random.gauss(0, 0.04)*MODEL_INPUT_SIZE[0]
+                    y += random.gauss(0, 0.04)*MODEL_INPUT_SIZE[0]
                     keypoints[key_combine('point', 'point_xy')] = [x, y]
 
         pafs, paf_show = connection2pafs(body_keypoints, MODEL_INPUT_SIZE)
@@ -148,7 +148,7 @@ class InstanceCommonDataset(Dataset):
         instance_mask_tensor = to_tensor(instance_mask)
         heatmaps_tensor = to_tensor(heatmaps)
         pafs_tensor = to_tensor(pafs)
-
+        imshow(image+heatmap_show)
         input_tensor = torch.cat([image_tensor, segment_mask_tensor, heatmaps_tensor, pafs_tensor], dim=0)
 
         out = {}
@@ -190,7 +190,7 @@ def parse_args():
             "epoch": 30,
             "show_iter": 20,
             "val_iter": 120,
-            "batch_size": 8,
+            "batch_size": 18,
             "cpu_num": 0,
         }
 

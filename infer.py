@@ -168,8 +168,7 @@ def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/instan
 def infer_instance(model: Segment,
                    image: np.ndarray,
                    segment_mask: np.ndarray,
-                   heatmaps: list,
-                   pafs: list,
+                   keypoints:dict,
                    mask=None,
                    rect: list = None,
                    pad=0,
@@ -186,16 +185,10 @@ def infer_instance(model: Segment,
 
     segment_mask = crop_pad_(segment_mask)
 
-    heatmaps = [crop_pad_(heatmaps[:, :, i]) for i in range(heatmaps.shape[2])]
-
-    pafs = [crop_pad_(pafs[:, :, i]) for i in range(pafs.shape[2])]
-
     if mask is not None:
         mask = crop_pad_(mask)
         image = np.bitwise_and(image, mask[:, :, np.newaxis])
         segment_mask = np.bitwise_and(segment_mask, mask)
-        heatmaps = [np.bitwise_and(heatmap, mask) for heatmap in heatmaps]
-        pafs = [np.bitwise_and(paf, mask) for paf in pafs]
 
     if min(*image.shape[:2]) < 50:
         return [], None, None
@@ -210,8 +203,6 @@ def infer_instance(model: Segment,
                                   value=0)
         image = copyMakeBorder_(image)
         segment_mask = copyMakeBorder_(segment_mask)
-        heatmaps = [copyMakeBorder_(heatmap) for heatmap in heatmaps]
-        pafs = [copyMakeBorder_(paf) for paf in pafs]
 
     # 添加预测
     pre_size = image.shape[:2]
@@ -221,8 +212,9 @@ def infer_instance(model: Segment,
 
     image = cv.resize(image, MODEL_INPUT_SIZE)
     segment_mask = cv.resize(segment_mask, MODEL_INPUT_SIZE)
-    heatmaps = [cv.resize(heatmap, MODEL_INPUT_SIZE) for heatmap in heatmaps]
-    pafs = [cv.resize(paf, MODEL_INPUT_SIZE) for paf in pafs]
+
+    heatmaps, heatmap_show = keypoint2heatmaps(keypoints, MODEL_INPUT_SIZE)
+    pafs, paf_show = connection2pafs(keypoints, MODEL_INPUT_SIZE)
 
     image_tensor = normal(to_tensor(image))
     segment_mask_tensor = to_tensor(segment_mask)

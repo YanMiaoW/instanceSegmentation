@@ -158,7 +158,7 @@ if __name__ == "__main__":
 
             mask = contour2mask(j0, contours, hierarchy, (h, w))
 
-            if len(faces) <= 0:
+            if len(faces) <= 1:
 
                 # 画语义分割mask
                 masks.append(mask)
@@ -168,7 +168,7 @@ if __name__ == "__main__":
                 # for keypoints in poses:
                 #     draw_keypoints(mix, keypoints, labeled=True)
 
-            elif len(faces) >= 1:
+            elif len(faces) >= 2:
                 poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, border=16)
 
                 for keypoints in poses:
