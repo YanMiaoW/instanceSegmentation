@@ -190,7 +190,7 @@ def parse_args():
             "checkpoint_dir": "/checkpoint/segment",
             # "checkpoint_save_path": "",
             # "pretrained_path":"",
-            "epoch": 30,
+            "epoch": 100,
             "show_iter": 20,
             "val_iter": 120,
             "batch_size": 8,
@@ -296,7 +296,13 @@ if __name__ == "__main__":
         loss_total = []
         for i0, (input_ts, instance_mask_ts, outs) in enumerate(trainloader):
             model.train()
-            input_ts, instance_mask_ts = input_ts.to(device), instance_mask_ts.to(device)
+            try:
+                input_ts, instance_mask_ts = input_ts.to(device), instance_mask_ts.to(device)
+            except:
+                print('load fail')
+                time.sleep(5)
+                continue
+            
 
             optimizer.zero_grad()
 
@@ -333,7 +339,12 @@ if __name__ == "__main__":
 
                     val_ious = []
                     for j0, (vinput_ts, vinstance_mask_ts, vouts) in enumerate(valloader):
-                        vinput_ts, vinstance_mask_ts = vinput_ts.to(device), vinstance_mask_ts.to(device)
+                        try:
+                            vinput_ts, vinstance_mask_ts = vinput_ts.to(device), vinstance_mask_ts.to(device)
+                        except:
+                            print('load fail')
+                            time.sleep(5)
+                            continue
 
                         voutput_ts = torch.sigmoid(model(vinput_ts))
 
