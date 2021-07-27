@@ -205,7 +205,7 @@ def parse_args():
             # "val_dataset_dir": "/data_ssd/hun_sha_di_pian",
             "checkpoint_dir": "/checkpoint/segment",
             # "checkpoint_save_path": "",
-            # "pretrained_path":"",
+            # "pretrained_path":"/root/ym/checkpoint/segment/final_best_0727.pth",
             "epoch": 100,
             "show_iter": 20,
             "val_iter": 120,
