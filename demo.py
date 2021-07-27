@@ -127,6 +127,9 @@ if __name__ == "__main__":
         _, segment_mask_binary = cv.threshold(segment_mask, 127, 255, cv.THRESH_BINARY)
         contours, hierarchy = cv.findContours(segment_mask_binary, cv.RETR_TREE, cv.CHAIN_APPROX_SIMPLE)
 
+        if hierarchy is None:
+            continue
+
         instance_num = (hierarchy[0, :, 3] == -1).sum()
 
         k0 = 0
