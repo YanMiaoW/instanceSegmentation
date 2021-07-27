@@ -127,7 +127,7 @@ class InstanceCommonDataset(Dataset):
 
         body_keypoints = result[key_combine('body_keypoints', 'sub_dict')]
 
-        if not self.test or True:
+        if not self.test:
             for keypoints in body_keypoints.values():
                 if random.random() < 0.4:
                     keypoints[key_combine('status', 'keypoint_status')] = 'missing'
