@@ -250,6 +250,7 @@ if __name__ == "__main__":
     else:
         device = 'cpu'
 
+    print(f'device: {device}')
 
     # 加载
 
@@ -295,7 +296,6 @@ if __name__ == "__main__":
                 if isinstance(v, torch.Tensor):
                     state[k] = v.to(device)
 
-    print(f'device: {device}')
 
     # 可视化
     show_img_tag = True
