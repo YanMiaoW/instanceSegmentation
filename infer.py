@@ -8,6 +8,7 @@ from functools import partial
 import torchvision.transforms as transforms
 
 from ymlib.common_dataset_api import key_combine
+from ymlib.dataset_util import crop_pad
 from ymlib.dataset_visual import index2color
 from instanceSegmentation.model.segment import Segment
 
@@ -53,7 +54,7 @@ def keypoint2heatmaps(keypoint, shape, sigma=10, threshold=0.01):
 
         if key_type in keypoint and\
             keypoint[key_type][
-                key_combine('status', 'keypoint_status')] == 'vis':
+                key_combine('status', 'keypoint_status')] != 'missing':
 
             x, y = keypoint[key_type][key_combine('point', 'point_xy')]
             h, w = shape
@@ -105,9 +106,9 @@ def connection2pafs(keypoint, shape, sigma=10):
         point = key_combine('point', 'point_xy')
 
         if part1 in keypoint and\
-                keypoint[part1][status] == 'vis' and\
+                keypoint[part1][status] != 'missing' and\
                 part2 in keypoint and\
-                keypoint[part2][status]  == 'vis':
+                keypoint[part2][status]  != 'missing':
 
             x1, y1 = keypoint[part1][point]
             x2, y2 = keypoint[part2][point]
@@ -152,7 +153,7 @@ def connection2pafs(keypoint, shape, sigma=10):
     return pafs, paf_show
 
 
-def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/not_exist') -> nn.Module:
+def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/instanceSegmentation/final_best_0727.pth') -> nn.Module:
     instance_model = Segment(3 + 1 + len(ORDER_PART_NAMES) + len(CONNECTION_PARTS) * 2)
     if os.path.exists(checkpoint_path):
         print(f'loading model from {checkpoint_path}')
@@ -173,20 +174,21 @@ def infer_instance(model: Segment,
                    rect: list = None,
                    pad=0,
                    border=0) -> np.ndarray:
+
     h, w = image.shape[:2]
     if rect is None:
         rect = [0, 0, w, h]
     x1, y1 = rect[:2]
 
-    crop_pad_ = partial(crop_pad, xyxy=rect, bias_xyxy=[-pad, -pad, pad, pad])
+    crop_pad_ = partial(crop_pad, xyxy=rect, ltrb=[pad, pad, pad, pad])
 
     image = crop_pad_(image)
 
     segment_mask = crop_pad_(segment_mask)
 
-    heatmaps = [crop_pad_(heatmap) for heatmap in heatmaps]
+    heatmaps = [crop_pad_(heatmaps[:, :, i]) for i in range(heatmaps.shape[2])]
 
-    pafs = [crop_pad_(paf) for paf in pafs]
+    pafs = [crop_pad_(pafs[:, :, i]) for i in range(pafs.shape[2])]
 
     if mask is not None:
         mask = crop_pad_(mask)
@@ -212,50 +214,40 @@ def infer_instance(model: Segment,
         pafs = [copyMakeBorder_(paf) for paf in pafs]
 
     # 添加预测
-    cut_size = image.shape[:2]
+    pre_size = image.shape[:2]
 
-    input_size = (480, 480)
+    normal = transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+    to_tensor = transforms.ToTensor()
 
-    image_transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-    ])
+    image = cv.resize(image, MODEL_INPUT_SIZE)
+    segment_mask = cv.resize(segment_mask, MODEL_INPUT_SIZE)
+    heatmaps = [cv.resize(heatmap, MODEL_INPUT_SIZE) for heatmap in heatmaps]
+    pafs = [cv.resize(paf, MODEL_INPUT_SIZE) for paf in pafs]
 
-    mask_transform = transforms.ToTensor()
-    heatmap_transfrom = transforms.ToTensor()
-    paf_transfrom = transforms.ToTensor()
+    image_tensor = normal(to_tensor(image))
+    segment_mask_tensor = to_tensor(segment_mask)
 
-    image = cv.resize(image, input_size)
-    segment_mask = cv.resize(segment_mask, input_size)
-    heatmaps = [cv.resize(heatmap, input_size) for heatmap in heatmaps]
-    pafs = [cv.resize(paf, input_size) for paf in pafs]
-
-    image_tensor = image_transform(image)
-    # TODO 添加mask训练
-    segment_mask_tensor = mask_transform(segment_mask)
-
-    heatmap_tensors = [heatmap_transfrom(heatmap) for heatmap in heatmaps]
+    heatmap_tensors = [to_tensor(heatmap) for heatmap in heatmaps]
     heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
 
-    paf_tensors = [paf_transfrom(paf) for paf in pafs]
+    paf_tensors = [to_tensor(paf) for paf in pafs]
     paf_tensor = torch.cat(paf_tensors, dim=0)
 
-    input_tensor = torch.cat([image_tensor, heatmap_tensor, paf_tensor], dim=0)
+    input_tensor = torch.cat([image_tensor,segment_mask_tensor, heatmap_tensor, paf_tensor], dim=0)
     input_tensor = torch.unsqueeze(input_tensor, axis=0)
 
     input_tensor = input_tensor.to(next(model.parameters()).device)
 
-    output_tensor = model(input_tensor)
-    instance_mask = torch.sigmoid(output_tensor)
-    instance_mask = (instance_mask[0][0] * 255).detach().numpy().astype(np.uint8)
+    instance_mask_tensor = torch.sigmoid(model(input_tensor))
+    instance_mask = (instance_mask_tensor[0][0] * 255).detach().cpu().numpy().astype(np.uint8)
 
     # 恢复mask
-    instance_mask = cv.resize(instance_mask, cut_size[::-1])
+    instance_mask = cv.resize(instance_mask, pre_size[::-1])
 
     if border != 0:
-        instance_mask = crop_pad(instance_mask, bias_xyxy=[border, border, -border, -border])
+        instance_mask = crop_pad(instance_mask, ltrb=[-border, -border, -border, -border])
 
     x1, y1, x2, y2 = rect
-    instance_mask = crop_pad(instance_mask, bias_xyxy=[-x1 + pad, -y1 + pad, w - x2 - pad, h - y2 - pad])
+    instance_mask = crop_pad(instance_mask, ltrb=[x1 - pad, y1 - pad, w - x2 - pad, h - y2 - pad])
 
     return instance_mask

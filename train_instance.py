@@ -5,6 +5,7 @@ import numpy as np
 import os
 import cv2 as cv
 import copy
+import random
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 from torch.optim import Adam
@@ -38,24 +39,23 @@ class InstanceCommonDataset(Dataset):
             image_path = ann[key_combine('image', 'image_path')]
             segment_path = ann[key_combine('segment_mask', 'mask_path')]
 
-            for obj in objs:
+            def filter(result):
+                yield 'instance_mask' in result
 
-                def filter(result):
-                    yield 'instance_mask' in result
+                yield 'body_keypoints' in result
 
-                    yield 'body_keypoints' in result
+                # yield sum(keypoint['status'] != 'missing' for keypoint in result['body_keypoints'].values()) > 9
 
-                    yield sum(keypoint['status'] != 'missing' for keypoint in result['body_keypoints'].values()) > 9
+                if 'class' in result:
+                    yield result['class'] in ['person']
 
-                    if 'class' in result:
-                        yield result['class'] in ['person']
+                yield 'box' in result
+                x0, y0, x1, y1 = result['box']
+                bw, bh = x1 - x0, y1 - y0
+                yield bw > 50 and bh > 50
 
-                    yield 'box' in result
-                    x0, y0, x1, y1 = result['box']
-                    bw, bh = x1 - x0, y1 - y0
-                    yield bw > 50 and bh > 50
-
-                if common_filter(obj, filter):
+            if all(common_filter(obj, filter) for obj in objs):
+                for obj in objs:
 
                     obj[key_combine('image', 'image_path')] = image_path
                     obj[key_combine('segment_mask', 'mask_path')] = segment_path
@@ -64,10 +64,11 @@ class InstanceCommonDataset(Dataset):
 
                     self.results.append(obj)
 
-        self.__getitem__(0)
+        # for i in range(len(self.results)):
+        #     self.__getitem__(i)
 
     def __getitem__(self, index):
-        result = copy.deepcopy( self.results[index])
+        result = copy.deepcopy(self.results[index])
 
         common_transfer(result)
 
@@ -106,21 +107,36 @@ class InstanceCommonDataset(Dataset):
                    r=True)
 
         # 增强
-        common_aug(
-            result,
-            iaa.Sequential([
-                sometimes(iaa.LinearContrast((0.75, 1.5))),
-                sometimes(iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * .99), per_channel=0.5)),
-                sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
-            ] if not self.test else None), r=True)
+        common_aug(result,
+                   iaa.Sequential([
+                       sometimes(iaa.LinearContrast((0.75, 1.5))),
+                       sometimes(iaa.AdditiveGaussianNoise(loc=0, scale=(0.0, 0.05 * .99), per_channel=0.5)),
+                       sometimes(iaa.Multiply((0.8, 1.2), per_channel=0.2)),
+                   ] if not self.test else None),
+                   r=True)
 
         common_aug(result, iaa.Resize({"height": MODEL_INPUT_SIZE[0], "width": MODEL_INPUT_SIZE[1]}), r=True)
 
         image = result[key_combine('image', 'image')]
+
         segment_mask = result[key_combine('segment_mask', 'mask')]
+        kernel = cv.getStructuringElement(cv.MORPH_ELLIPSE, (5, 5))
+        segment_mask = cv.morphologyEx(segment_mask, cv.MORPH_CLOSE, kernel, iterations=3)
+
         instance_mask = result[key_combine('instance_mask', 'mask')]
 
         body_keypoints = result[key_combine('body_keypoints', 'sub_dict')]
+
+        if not self.test or True:
+            for keypoints in body_keypoints.values():
+                if random.random() < 0.4:
+                    keypoints[key_combine('status', 'keypoint_status')] = 'missing'
+                elif random.random() < 0.4:
+                    x, y = keypoints[key_combine('point', 'point_xy')]
+                    x += random.gauss(0, 0.02)*MODEL_INPUT_SIZE[0]
+                    y += random.gauss(0, 0.02)*MODEL_INPUT_SIZE[0]
+                    keypoints[key_combine('point', 'point_xy')] = [x, y]
+
         pafs, paf_show = connection2pafs(body_keypoints, MODEL_INPUT_SIZE)
         heatmaps, heatmap_show = keypoint2heatmaps(body_keypoints, MODEL_INPUT_SIZE)
 
@@ -278,8 +294,6 @@ if __name__ == "__main__":
                 if isinstance(v, torch.Tensor):
                     state[k] = v.to(device)
 
-
-
     # 可视化
     show_img_tag = True
 
@@ -302,7 +316,6 @@ if __name__ == "__main__":
                 print('load fail')
                 time.sleep(5)
                 continue
-            
 
             optimizer.zero_grad()
 
@@ -386,15 +399,17 @@ if __name__ == "__main__":
                         voutmask_show = cv.applyColorMap(voutmask, cv.COLORMAP_HOT)
 
                         # 蓝图变红图
-                        outmask_show = cv.cvtColor( outmask_show, cv.COLOR_BGR2RGB)
+                        outmask_show = cv.cvtColor(outmask_show, cv.COLOR_BGR2RGB)
                         voutmask_show = cv.cvtColor(voutmask_show, cv.COLOR_BGR2RGB)
 
                         instance_mask3 = cv.cvtColor(instance_mask, cv.COLOR_GRAY2BGR)
                         vinstance_mask3 = cv.cvtColor(vinstance_mask, cv.COLOR_GRAY2BGR)
 
-                        train_show_img = np.concatenate([image, instance_mask3, heatmap_show, paf_show, mix, outmask_show], axis=1)
+                        train_show_img = np.concatenate([image, instance_mask3, heatmap_show, paf_show, mix, outmask_show],
+                                                        axis=1)
 
-                        val_show_img = np.concatenate([vimage, vinstance_mask3, vheatmap_show, vpaf_show, vmix, voutmask_show], axis=1)
+                        val_show_img = np.concatenate([vimage, vinstance_mask3, vheatmap_show, vpaf_show, vmix, voutmask_show],
+                                                      axis=1)
 
                         show_img = np.concatenate([train_show_img, val_show_img], axis=0)
 

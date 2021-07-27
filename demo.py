@@ -10,7 +10,8 @@ import glob
 import sys
 
 from ymlib.debug_function import *
-from ymlib.dataset_visual import mask2box, draw_keypoint, draw_mask, index2color, draw_box, xywh2xyxy
+from ymlib.dataset_visual import draw_keypoints, draw_mask, index2color, draw_box
+from ymlib.dataset_util import mask2box, xywh2xyxy
 from ymlib.common import path_decompose, get_maximum_free_memory_gpu_id, get_git_branch_name
 
 from tsai.face import get_face_detect_model, infer_face_detect
@@ -32,7 +33,7 @@ def parse_args():
     return args
 
 
-def contour2mask(contours, hierarchy, index, shape):
+def contour2mask(index, contours, hierarchy, shape):
     def get_root_and_level(index, level_count=0):
         parent = hierarchy[0][index][3]
         if parent == -1:
@@ -98,6 +99,7 @@ if __name__ == "__main__":
     print(f'save result mix to {save_dir}')
 
     for i0, filepath in enumerate(tqdm.tqdm(image_paths)):
+        filepath = '/Users/yanmiao/yanmiao/data-common/humanTest/image/00002.png'
 
         _, basename, _ = path_decompose(filepath)
         result_path = os.path.join(save_dir, f'{basename}.jpg')
@@ -112,14 +114,12 @@ if __name__ == "__main__":
         if scale_ < 0.8:
             image = cv.resize(image, (0, 0), fx=scale_, fy=scale_)
 
-        image = cv.cvtColor(image, cv.COLOR_BGR2RGB)
-
         mix = image.copy()
 
         segment_mask = infer_segment(segment_model, image)
         # imshow(segment_mask)
 
-        # segment_path = '/Users/yanmiao/yanmiao/data-common/supervisely/segment_mask/05411.png'
+        # segment_path = '/Users/yanmiao/yanmiao/data-common/humanTest/segment_mask/00002.png'
         # segment_mask = cv.imread(segment_path, cv.IMREAD_GRAYSCALE)
 
         _, segment_mask_binary = cv.threshold(segment_mask, 127, 255, cv.THRESH_BINARY)
@@ -128,6 +128,8 @@ if __name__ == "__main__":
         instance_num = (hierarchy[0, :, 3] == -1).sum()
 
         k0 = 0
+
+        masks =[]
 
         #TODO contours封装成api
         for j0, (contour, parent) in enumerate(zip(contours, hierarchy[0, :, 3])):
@@ -148,40 +150,41 @@ if __name__ == "__main__":
             draw_box(mix, rect)
 
             # 获取人脸
-            faces = infer_face_detect(face_detect_model, image, mask=segment_mask, rect=rect, bolder=16)
+            faces = infer_face_detect(face_detect_model, image, mask=segment_mask, rect=rect, border=16)
 
             # 画脸
             for k0, box_xyxy in enumerate(faces):
                 draw_box(mix, box_xyxy, index2color(k0, len(faces)))
 
-            if len(faces) <= 1:
-                mask = contour2mask(contours, hierarchy, j0, segment_mask.shape)
+            mask = contour2mask(j0, contours, hierarchy, (h, w))
+
+            if len(faces) <= 0:
 
                 # 画语义分割mask
-                draw_mask(mix, mask, index2color(j0, instance_num))
+                masks.append(mask)
 
-                for k0, box_xyxy in enumerate(faces):
-                    draw_box(mix, box_xyxy, index2color(k0, len(faces)))
+                # poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, border=16)
 
-                poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, bolder=16)
+                # for keypoints in poses:
+                #     draw_keypoints(mix, keypoints, labeled=True)
 
-                for keypoints in poses:
-                    draw_keypoint(mix, keypoints, labeled=True)
-
-            elif len(faces) >= 2:
-                poses, _, _ = infer_pose(pose_model, image, mask=segment_mask, rect=rect, bolder=16)
+            elif len(faces) >= 1:
+                poses, _, _ = infer_pose(pose_model, image, mask=mask, rect=rect, border=16)
 
                 for keypoints in poses:
                     # 画肢体点
-                    draw_keypoint(mix, keypoints, labeled=True)
+                    draw_keypoints(mix, keypoints, labeled=True)
 
                     heatmaps, heatmap_show = keypoint2heatmaps(keypoints, (h, w))
                     pafs, paf_show = connection2pafs(keypoints, (h, w))
-                    instance_mask = infer_instance(instance_model, image, segment_mask, heatmaps, pafs, rect=rect, bolder=16)
+                    instance_mask = infer_instance(instance_model, image, mask, heatmaps, pafs, rect=rect, border=16)
+
+                    masks.append(instance_mask)
 
                     # 画实例分割mask
-                    draw_mask(mix, instance_mask, index2color(k0, 10))
-                    k0 = k0 + 1 if k0 < 10 else 0
+        
+        for k0, mask in enumerate(masks):
+            draw_mask(mix, mask, index2color(k0, len(masks)))
 
-        # imshow(mix, window_name=filepath)
-        cv.imwrite(result_path, mix)
+        imshow(mix, window_name=filepath)
+        # cv.imwrite(result_path, mix)
