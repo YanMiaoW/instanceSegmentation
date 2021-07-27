@@ -141,7 +141,7 @@ if __name__ == "__main__":
             rect = cv.boundingRect(contour)
             rw, rh = rect[2:]
 
-            if rw < w * 0.1 or rh < h * 0.1:
+            if rw < w * 0.2 or rh < h * 0.2:
                 continue
 
             rect = xywh2xyxy(rect)
@@ -184,5 +184,5 @@ if __name__ == "__main__":
         for k0, mask in enumerate(masks):
             draw_mask(mix, mask, index2color(k0, len(masks)))
 
-        imshow(mix, window_name=filepath)
+        # imshow(mix, window_name=filepath)
         # cv.imwrite(result_path, mix)

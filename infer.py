@@ -9,8 +9,9 @@ import torchvision.transforms as transforms
 
 from ymlib.common_dataset_api import key_combine
 from ymlib.dataset_util import crop_pad
-from ymlib.dataset_visual import index2color
+from ymlib.dataset_visual import index2color, draw_keypoints
 from instanceSegmentation.model.segment import Segment
+from ymlib.debug_function import *
 
 MODEL_INPUT_SIZE = (480, 480)
 
@@ -168,7 +169,7 @@ def get_instance_model(checkpoint_path='/Users/yanmiao/yanmiao/checkpoint/instan
 def infer_instance(model: Segment,
                    image: np.ndarray,
                    segment_mask: np.ndarray,
-                   keypoints:dict,
+                   keypoints: dict,
                    mask=None,
                    rect: list = None,
                    pad=0,
@@ -213,19 +214,29 @@ def infer_instance(model: Segment,
     image = cv.resize(image, MODEL_INPUT_SIZE)
     segment_mask = cv.resize(segment_mask, MODEL_INPUT_SIZE)
 
+    for keypoint in keypoints.values():
+        x, y = keypoint[key_combine('point', 'point_xy')]
+        x += pad + border - x1
+        y += pad + border - y1
+        ph, pw = pre_size
+        x *= MODEL_INPUT_SIZE[1] / pw
+        y *= MODEL_INPUT_SIZE[0] / ph
+        keypoint[key_combine('point', 'point_xy')] = [x, y]
+
     heatmaps, heatmap_show = keypoint2heatmaps(keypoints, MODEL_INPUT_SIZE)
     pafs, paf_show = connection2pafs(keypoints, MODEL_INPUT_SIZE)
 
     image_tensor = normal(to_tensor(image))
     segment_mask_tensor = to_tensor(segment_mask)
 
-    heatmap_tensors = [to_tensor(heatmap) for heatmap in heatmaps]
-    heatmap_tensor = torch.cat(heatmap_tensors, dim=0)
+    heatmap_tensor = to_tensor(heatmaps)
 
-    paf_tensors = [to_tensor(paf) for paf in pafs]
-    paf_tensor = torch.cat(paf_tensors, dim=0)
+    paf_tensor = to_tensor(pafs)
+    
+    # draw_keypoints(image, keypoints, labeled=True)
+    # imshow(image)
 
-    input_tensor = torch.cat([image_tensor,segment_mask_tensor, heatmap_tensor, paf_tensor], dim=0)
+    input_tensor = torch.cat([image_tensor, segment_mask_tensor, heatmap_tensor, paf_tensor], dim=0)
     input_tensor = torch.unsqueeze(input_tensor, axis=0)
 
     input_tensor = input_tensor.to(next(model.parameters()).device)
