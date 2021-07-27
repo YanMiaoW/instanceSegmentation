@@ -99,7 +99,7 @@ if __name__ == "__main__":
     print(f'save result mix to {save_dir}')
 
     for i0, filepath in enumerate(tqdm.tqdm(image_paths)):
-        filepath = '/Users/yanmiao/yanmiao/data-common/humanTest/image/00002.png'
+        # filepath = '/Users/yanmiao/yanmiao/data-common/humanTest/image/00002.png'
 
         _, basename, _ = path_decompose(filepath)
         result_path = os.path.join(save_dir, f'{basename}.jpg')
@@ -185,4 +185,4 @@ if __name__ == "__main__":
             draw_mask(mix, mask, index2color(k0, len(masks)))
 
         # imshow(mix, window_name=filepath)
-        # cv.imwrite(result_path, mix)
+        cv.imwrite(result_path, mix)
