@@ -252,7 +252,6 @@ if __name__ == "__main__":
 
 
     # 加载
-    iou_max = 0
 
     if hasattr(args, 'checkpoint_save_path'):
         branch_best_path = args.checkpoint_save_path
@@ -277,6 +276,8 @@ if __name__ == "__main__":
         except:
             print('load fail')
 
+    iou_max = 0
+
     if hasattr(args, 'continue_train') and args.continue_train and os.path.exists(branch_best_path):
         print(f"loading checkpoint from {branch_best_path}")
         load_checkpoint(branch_best_path)
@@ -284,6 +285,7 @@ if __name__ == "__main__":
     elif hasattr(args, "pretrained_path") and os.path.exists(args.pretrained_path):
         print(f"pretrained loading checkpoint from {args.pretrained_path}")
         load_checkpoint(args.pretrained_path)
+        iou_max = 0
         start_epoch = 0
     else:
         start_epoch = 0
