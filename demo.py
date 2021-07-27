@@ -175,9 +175,7 @@ if __name__ == "__main__":
                     # 画肢体点
                     draw_keypoints(mix, keypoints, labeled=True)
 
-                    heatmaps, heatmap_show = keypoint2heatmaps(keypoints, (h, w))
-                    pafs, paf_show = connection2pafs(keypoints, (h, w))
-                    instance_mask = infer_instance(instance_model, image, mask, heatmaps, pafs, rect=rect, border=16)
+                    instance_mask = infer_instance(instance_model, image, mask, keypoints, rect=rect, border=16)
 
                     masks.append(instance_mask)
 

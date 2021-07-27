@@ -148,7 +148,7 @@ class InstanceCommonDataset(Dataset):
         instance_mask_tensor = to_tensor(instance_mask)
         heatmaps_tensor = to_tensor(heatmaps)
         pafs_tensor = to_tensor(pafs)
-        imshow(image+heatmap_show)
+        # imshow(image+heatmap_show)
         input_tensor = torch.cat([image_tensor, segment_mask_tensor, heatmaps_tensor, pafs_tensor], dim=0)
 
         out = {}
