@@ -278,6 +278,8 @@ if __name__ == "__main__":
             print('load fail')
 
     iou_max = 0
+    start_epoch = 0
+
 
     if hasattr(args, 'continue_train') and args.continue_train and os.path.exists(branch_best_path):
         print(f"loading checkpoint from {branch_best_path}")
@@ -289,7 +291,6 @@ if __name__ == "__main__":
         iou_max = 0
         start_epoch = 0
     else:
-        start_epoch = 0
         model = model.to(device)
         for state in optimizer.state.values():
             for k, v in state.items():
