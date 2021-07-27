@@ -114,6 +114,7 @@ if __name__ == "__main__":
         if scale_ < 0.8:
             image = cv.resize(image, (0, 0), fx=scale_, fy=scale_)
 
+        h, w = image.shape[:2]
         
         mix = image.copy()
 
@@ -142,7 +143,7 @@ if __name__ == "__main__":
             rect = cv.boundingRect(contour)
             rw, rh = rect[2:]
 
-            if rw < w * 0.2 * scale_ or rh < h * 0.2 * scale_:
+            if rw < w * 0.2 or rh < h * 0.2:
                 continue
 
             rect = xywh2xyxy(rect)
